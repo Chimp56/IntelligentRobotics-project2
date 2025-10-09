@@ -1,0 +1,178 @@
+#!/usr/bin/env python
+import rospy
+from nav_msgs.msg import Odometry
+import math
+
+class ExecutionMonitor:
+    def __init__(self):
+        rospy.init_node('execution_monitor', anonymous=True)
+        
+        # Odometry subscriber
+        self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
+        
+        # Current state
+        self.odom_data = None
+        self.current_position = None
+        self.target_point = None
+        self.previous_distance = float('inf')
+        self.stuck_counter = 0
+        self.max_stuck_iterations = 50  # 5 seconds at 10Hz
+        self.success_threshold = 1.0  # 1 foot
+        
+        # Coordinate system setup
+        self.startup_position = None  # Robot's actual starting position in odom frame (meters)
+        self.meters_per_foot = 0.3048  # Conversion factor
+        
+        # Callbacks
+        self.success_callback = None
+        self.failure_callback = None
+        
+        # Rate for monitoring loop
+        self.rate = rospy.Rate(10)  # 10 Hz
+        
+        rospy.loginfo("Execution Monitor initialized")
+    
+    def set_target_point(self, x, y):
+        """
+        Set the target point for navigation (in feet)
+        """
+        self.target_point = (x, y)
+        self.previous_distance = float('inf')
+        self.stuck_counter = 0
+        rospy.loginfo("Target point set to: ({:.2f}, {:.2f}) feet".format(x, y))
+    
+    def set_success_callback(self, callback):
+        """
+        Set callback function to call when target is reached successfully
+        """
+        self.success_callback = callback
+    
+    def set_failure_callback(self, callback):
+        """
+        Set callback function to call when robot fails to reach target
+        """
+        self.failure_callback = callback
+    
+    def odom_callback(self, data):
+        """
+        Update current position from odometry and convert to feet
+        """
+        self.odom_data = data
+        if data is not None:
+            # Set startup position on first odometry reading
+            if self.startup_position is None:
+                self.startup_position = (
+                    data.pose.pose.position.x,
+                    data.pose.pose.position.y
+                )
+                rospy.loginfo("Startup position set to: ({:.3f}, {:.3f}) meters".format(
+                    self.startup_position[0], self.startup_position[1]))
+            
+            # Convert odometry position to feet, with (0,0) at startup position
+            current_x_meters = data.pose.pose.position.x - self.startup_position[0]
+            current_y_meters = data.pose.pose.position.y - self.startup_position[1]
+            
+            current_x_feet = current_x_meters / self.meters_per_foot
+            current_y_feet = current_y_meters / self.meters_per_foot
+            
+            self.current_position = (current_x_feet, current_y_feet)
+    
+    def calculate_distance_to_target(self):
+        """
+        Calculate distance from current position to target point
+        """
+        if self.current_position is None or self.target_point is None:
+            return float('inf')
+        
+        dx = self.target_point[0] - self.current_position[0]
+        dy = self.target_point[1] - self.current_position[1]
+        return math.sqrt(dx*dx + dy*dy)
+    
+    def is_making_progress(self):
+        """
+        Check if robot is making progress towards target
+        """
+        if self.current_position is None or self.target_point is None:
+            return False
+        
+        current_distance = self.calculate_distance_to_target()
+        
+        # Check if we're getting closer
+        if current_distance < self.previous_distance:
+            self.stuck_counter = 0
+            self.previous_distance = current_distance
+            return True
+        else:
+            # Not making progress
+            self.stuck_counter += 1
+            return False
+    
+    def is_target_reached(self):
+        """
+        Check if robot is within 1 foot of target point
+        """
+        if self.current_position is None or self.target_point is None:
+            return False
+        
+        distance = self.calculate_distance_to_target()
+        return distance <= self.success_threshold
+    
+    def is_stuck(self):
+        """
+        Check if robot has been stuck (not making progress) for too long
+        """
+        return self.stuck_counter >= self.max_stuck_iterations
+    
+    def monitor_execution(self):
+        """
+        Main monitoring loop - checks progress and determines success/failure
+        """
+        if self.target_point is None:
+            rospy.loginfo("No target point set - skipping monitoring")
+            return
+        
+        if self.current_position is None:
+            rospy.loginfo("No position data available - skipping monitoring")
+            return
+        
+        current_distance = self.calculate_distance_to_target()
+        
+        # Check if target reached
+        if self.is_target_reached():
+            rospy.loginfo("SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance))
+            if self.success_callback:
+                self.success_callback()
+            return True
+        
+        # Check if making progress
+        if self.is_making_progress():
+            rospy.loginfo("Making progress towards target. Distance: {:.2f} feet".format(current_distance))
+            return False
+        
+        # Check if stuck
+        if self.is_stuck():
+            rospy.logwarn("FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance))
+            if self.failure_callback:
+                self.failure_callback()
+            return True
+        
+        # Still working on it
+        rospy.loginfo("Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance))
+        return False
+    
+    def run(self):
+        """
+        Main execution loop
+        """
+        rospy.loginfo("Execution Monitor starting...")
+        
+        while not rospy.is_shutdown():
+            self.monitor_execution()
+            self.rate.sleep()
+
+if __name__ == '__main__':
+    try:
+        monitor = ExecutionMonitor()
+        monitor.run()
+    except rospy.ROSInterruptException:
+        pass
