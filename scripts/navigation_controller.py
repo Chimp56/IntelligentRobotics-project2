@@ -374,7 +374,7 @@ class NavigationController:
         
         # Check for obstacles
         if len(front_ranges) > 0 and np.min(front_ranges) < distance_threshold:
-            self.obstacle_detected = True
+            self.obstacle_detected = False
             rospy.loginfo("Obstacle detected at {:.2f}m".format(np.min(front_ranges)))
         else:
             self.obstacle_detected = False
