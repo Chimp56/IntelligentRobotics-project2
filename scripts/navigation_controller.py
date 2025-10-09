@@ -7,12 +7,12 @@ from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
-from std_msgs.msg import Bool, String
+from std_msgs.msg import String
 
 # Constants
 FEET_PER_METER = 3.28084
 METERS_PER_FEET = 1 / FEET_PER_METER
-FRONT_ESCAPE_DISTANCE_FEET = 1
+FRONT_ESCAPE_DISTANCE_FEET = .5
 CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER = 0.087
 CAMERA_TO_BUMPER_OFFSET_METER = 0.40
 COLLISION_TIMEOUT_SEC = 3.0
@@ -58,15 +58,28 @@ class NavigationController:
         
         # Execution monitor communication
         self.target_point_pub = rospy.Publisher('/execution_monitor/set_target', Point, queue_size=1)
-        self.target_reached_sub = rospy.Subscriber('/execution_monitor/target_reached', Bool, self.on_target_reached)
-        self.target_failed_sub = rospy.Subscriber('/execution_monitor/target_failed', Bool, self.on_target_failed)
         self.execution_status_sub = rospy.Subscriber('/execution_monitor/status', String, self.on_execution_status)
         
         # Rate for control loop
         self.rate = rospy.Rate(10)  # 10 Hz
         
         rospy.loginfo("Navigation Controller initialized")
-    
+        
+    def run(self):
+        """
+        Main control loop
+        """
+        rospy.loginfo("Navigation Controller starting...")
+        
+        while not rospy.is_shutdown():
+            if self.state == 'NAVIGATING':
+                self.navigate_to_target()
+            elif self.state == 'COMPLETED':
+                rospy.loginfo("Navigation completed")
+                break
+            
+            self.rate.sleep()
+            
     def set_waypoints(self, waypoints):
         """
         Set a list of waypoints to navigate to (in feet)
@@ -107,11 +120,13 @@ class NavigationController:
             target_msg.z = -1.0  # Special value to indicate no target
             self.target_point_pub.publish(target_msg)
     
-    def on_target_reached(self, msg):
+    def on_execution_status(self, msg):
         """
-        Callback when execution monitor reports success
+        Callback to receive status updates from execution monitor
         """
-        if msg.data:  # Check if the Bool message is True
+        status = msg.data.strip()
+        
+        if status.startswith("SUCCESS"):
             rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
                 self.current_waypoint_index, self.current_target[0], self.current_target[1]))
             
@@ -126,12 +141,8 @@ class NavigationController:
                 self.state = 'COMPLETED'
                 self.current_target = None
                 rospy.loginfo("All waypoints completed!")
-    
-    def on_target_failed(self, msg):
-        """
-        Callback when execution monitor reports failure
-        """
-        if msg.data:  # Check if the Bool message is True
+                
+        elif status.startswith("FAILURE"):
             rospy.logwarn("Failed to reach waypoint {}: ({:.2f}, {:.2f}) feet".format(
                 self.current_waypoint_index, self.current_target[0], self.current_target[1]))
             
@@ -146,12 +157,10 @@ class NavigationController:
                 self.state = 'COMPLETED'
                 self.current_target = None
                 rospy.logwarn("Navigation completed with failures")
-    
-    def on_execution_status(self, msg):
-        """
-        Callback to receive status updates from execution monitor
-        """
-        rospy.loginfo("Execution Monitor: {}".format(msg.data))
+                
+        elif status.startswith("PROGRESS:") or status.startswith("STALLED:"):
+            # Just log progress/stalled status, no action needed
+            rospy.loginfo("Execution Monitor: {}".format(status))
     
     def calculate_angle_to_target(self):
         """
@@ -325,26 +334,13 @@ class NavigationController:
         """
         Handle obstacle by turning away
         """
+        return
         # Simple obstacle avoidance - turn left
         twist = Twist()
         twist.angular.z = ANGULAR_SPEED
         self.cmd_vel_pub.publish(twist)
         rospy.loginfo("Avoiding obstacle")
-    
-    def run(self):
-        """
-        Main control loop
-        """
-        rospy.loginfo("Navigation Controller starting...")
-        
-        while not rospy.is_shutdown():
-            if self.state == 'NAVIGATING':
-                self.navigate_to_target()
-            elif self.state == 'COMPLETED':
-                rospy.loginfo("Navigation completed")
-                break
-            
-            self.rate.sleep()
+
     
     # Callback functions
     def bumper_callback(self, data):
@@ -418,8 +414,8 @@ def main():
     # These are some example points within a typical room
     # Robot will start at (0,0) and navigate to these points
     dummy_waypoints = [
-        (2.0, 1.0),   # 2 feet right, 1 foot up from start
-        (4.0, 2.0),   # 4 feet right, 2 feet up from start
+        (10.0, 5.0),   # 10 feet right, 5 feet up from start, starting at (0,0) this should be a success
+        (4.0, 10),   # 4 feet right, 2 feet up from start, this should be a failure
         (1.0, 3.0),   # 1 foot right, 3 feet up from start
         (3.0, 4.0),   # 3 feet right, 4 feet up from start
     ]

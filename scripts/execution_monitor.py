@@ -2,7 +2,7 @@
 import rospy
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
-from std_msgs.msg import Bool, String
+from std_msgs.msg import String
 import math
 
 class ExecutionMonitor:
@@ -12,9 +12,7 @@ class ExecutionMonitor:
         # Odometry subscriber
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
         
-        # Publishers for communication with navigation controller
-        self.target_reached_pub = rospy.Publisher('/execution_monitor/target_reached', Bool, queue_size=1)
-        self.target_failed_pub = rospy.Publisher('/execution_monitor/target_failed', Bool, queue_size=1)
+        # Publisher for status communication with navigation controller
         self.status_pub = rospy.Publisher('/execution_monitor/status', String, queue_size=1)
         
         # Subscriber for target point from navigation controller
@@ -145,44 +143,31 @@ class ExecutionMonitor:
         
         # Check if target reached
         if self.is_target_reached():
-            rospy.loginfo("SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance))
-            self.publish_target_reached()
-            self.publish_status("SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance))
+            status = "SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance)
+            rospy.loginfo(status)
+            self.publish_status(status)
             return True
         
         # Check if making progress
         if self.is_making_progress():
-            rospy.loginfo("Making progress towards target. Distance: {:.2f} feet".format(current_distance))
-            self.publish_status("Making progress. Distance: {:.2f} feet".format(current_distance))
+            status = "PROGRESS: Moving towards target. Distance: {:.2f} feet".format(current_distance)
+            rospy.loginfo(status)
+            self.publish_status(status)
             return False
         
         # Check if stuck
         if self.is_stuck():
-            rospy.logwarn("FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance))
-            self.publish_target_failed()
-            self.publish_status("FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance))
+            status = "FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance)
+            rospy.logwarn(status)
+            self.publish_status(status)
             return True
         
         # Still working on it
-        rospy.loginfo("Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance))
-        self.publish_status("Progress stalled. Distance: {:.2f} feet".format(current_distance))
+        status = "STALLED: Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance)
+        rospy.loginfo(status)
+        self.publish_status(status)
         return False
     
-    def publish_target_reached(self):
-        """
-        Publish target reached message
-        """
-        msg = Bool()
-        msg.data = True
-        self.target_reached_pub.publish(msg)
-    
-    def publish_target_failed(self):
-        """
-        Publish target failed message
-        """
-        msg = Bool()
-        msg.data = True
-        self.target_failed_pub.publish(msg)
     
     def run(self):
         """
