@@ -63,6 +63,9 @@ class NavigationController:
         # Rate for control loop
         self.rate = rospy.Rate(10)  # 10 Hz
         
+        # Flag to track if execution monitor is ready
+        self.execution_monitor_ready = False
+        
         rospy.loginfo("Navigation Controller initialized")
         
     def run(self):
@@ -70,8 +73,6 @@ class NavigationController:
         Main control loop
         """
         rospy.loginfo("Navigation Controller starting...")
-        # wait 3 seconds
-        rospy.sleep(3)
         
         while not rospy.is_shutdown():
             if self.state == 'NAVIGATING':
@@ -90,9 +91,14 @@ class NavigationController:
         self.waypoints = waypoints
         self.current_waypoint_index = 0
         if waypoints:
-            self.set_next_target()
-            self.state = 'NAVIGATING'
-            rospy.loginfo("Starting navigation with {} waypoints (in feet)".format(len(waypoints)))
+            # Check if execution monitor is ready before setting target
+            if self.wait_for_execution_monitor():
+                self.set_next_target()
+                self.state = 'NAVIGATING'
+                rospy.loginfo("Starting navigation with {} waypoints (in feet)".format(len(waypoints)))
+            else:
+                rospy.logwarn("Execution monitor not ready - navigation not started")
+                self.state = 'IDLE'
         else:
             self.state = 'IDLE'
             rospy.loginfo("No waypoints provided")
@@ -127,6 +133,11 @@ class NavigationController:
         Callback to receive status updates from execution monitor
         """
         status = msg.data.strip()
+        
+        # Mark execution monitor as ready when we receive any status message
+        if not self.execution_monitor_ready:
+            self.execution_monitor_ready = True
+            rospy.loginfo("Execution Monitor is now ready!")
         
         if status.startswith("SUCCESS"):
             rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
@@ -163,6 +174,42 @@ class NavigationController:
         elif status.startswith("PROGRESS:") or status.startswith("STALLED:"):
             # Just log progress/stalled status, no action needed
             rospy.loginfo("Execution Monitor: {}".format(status))
+    
+    def wait_for_execution_monitor(self, timeout=10.0):
+        """
+        Wait for execution monitor to be ready
+        Returns True if ready, False if timeout
+        """
+        rospy.loginfo("Waiting for execution monitor to be ready...")
+        start_time = rospy.Time.now()
+        
+        while not rospy.is_shutdown():
+            if self.execution_monitor_ready:
+                return True
+            
+            # Check for timeout
+            elapsed = (rospy.Time.now() - start_time).to_sec()
+            if elapsed > timeout:
+                rospy.logwarn("Timeout waiting for execution monitor after {:.1f} seconds".format(timeout))
+                return False
+            
+            # Check if execution monitor topic exists
+            try:
+                # Try to get topic info to see if execution monitor is publishing
+                topics = rospy.get_published_topics()
+                execution_monitor_topics = [topic for topic in topics if 'execution_monitor' in topic[0]]
+                
+                if execution_monitor_topics:
+                    rospy.loginfo("Found execution monitor topics: {}".format([t[0] for t in execution_monitor_topics]))
+                else:
+                    rospy.loginfo("Execution monitor topics not found yet...")
+                    
+            except Exception as e:
+                rospy.loginfo("Checking for execution monitor topics...")
+            
+            rospy.sleep(1.0)  # Wait 1 second before checking again
+        
+        return False
     
     def calculate_angle_to_target(self):
         """

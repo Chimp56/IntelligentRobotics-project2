@@ -38,6 +38,10 @@ class ExecutionMonitor:
         self.rate = rospy.Rate(10)  # 10 Hz
         
         rospy.loginfo("Execution Monitor initialized")
+        
+        # Publish initial status to indicate readiness
+        rospy.sleep(0.5)  # Brief delay to ensure publishers are ready
+        self.publish_status("READY: Execution Monitor initialized")
 
     def run(self):
         """
