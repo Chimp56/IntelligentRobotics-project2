@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 import rospy
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Point
+from std_msgs.msg import Bool, String
 import math
 
 class ExecutionMonitor:
@@ -9,6 +11,14 @@ class ExecutionMonitor:
         
         # Odometry subscriber
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
+        
+        # Publishers for communication with navigation controller
+        self.target_reached_pub = rospy.Publisher('/execution_monitor/target_reached', Bool, queue_size=1)
+        self.target_failed_pub = rospy.Publisher('/execution_monitor/target_failed', Bool, queue_size=1)
+        self.status_pub = rospy.Publisher('/execution_monitor/status', String, queue_size=1)
+        
+        # Subscriber for target point from navigation controller
+        self.target_point_sub = rospy.Subscriber('/execution_monitor/set_target', Point, self.set_target_callback)
         
         # Current state
         self.odom_data = None
@@ -23,35 +33,31 @@ class ExecutionMonitor:
         self.startup_position = None  # Robot's actual starting position in odom frame (meters)
         self.meters_per_foot = 0.3048  # Conversion factor
         
-        # Callbacks
-        self.success_callback = None
-        self.failure_callback = None
+        # Node name for logging
+        self.node_name = rospy.get_name()
         
         # Rate for monitoring loop
         self.rate = rospy.Rate(10)  # 10 Hz
         
         rospy.loginfo("Execution Monitor initialized")
     
-    def set_target_point(self, x, y):
+    def set_target_callback(self, msg):
         """
-        Set the target point for navigation (in feet)
+        Callback to receive target point from navigation controller
         """
-        self.target_point = (x, y)
+        self.target_point = (msg.x, msg.y)
         self.previous_distance = float('inf')
         self.stuck_counter = 0
-        rospy.loginfo("Target point set to: ({:.2f}, {:.2f}) feet".format(x, y))
+        rospy.loginfo("Target point received: ({:.2f}, {:.2f}) feet".format(msg.x, msg.y))
+        self.publish_status("Target set to ({:.2f}, {:.2f}) feet".format(msg.x, msg.y))
     
-    def set_success_callback(self, callback):
+    def publish_status(self, message):
         """
-        Set callback function to call when target is reached successfully
+        Publish status message
         """
-        self.success_callback = callback
-    
-    def set_failure_callback(self, callback):
-        """
-        Set callback function to call when robot fails to reach target
-        """
-        self.failure_callback = callback
+        status_msg = String()
+        status_msg.data = message
+        self.status_pub.publish(status_msg)
     
     def odom_callback(self, data):
         """
@@ -140,25 +146,43 @@ class ExecutionMonitor:
         # Check if target reached
         if self.is_target_reached():
             rospy.loginfo("SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance))
-            if self.success_callback:
-                self.success_callback()
+            self.publish_target_reached()
+            self.publish_status("SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance))
             return True
         
         # Check if making progress
         if self.is_making_progress():
             rospy.loginfo("Making progress towards target. Distance: {:.2f} feet".format(current_distance))
+            self.publish_status("Making progress. Distance: {:.2f} feet".format(current_distance))
             return False
         
         # Check if stuck
         if self.is_stuck():
             rospy.logwarn("FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance))
-            if self.failure_callback:
-                self.failure_callback()
+            self.publish_target_failed()
+            self.publish_status("FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance))
             return True
         
         # Still working on it
         rospy.loginfo("Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance))
+        self.publish_status("Progress stalled. Distance: {:.2f} feet".format(current_distance))
         return False
+    
+    def publish_target_reached(self):
+        """
+        Publish target reached message
+        """
+        msg = Bool()
+        msg.data = True
+        self.target_reached_pub.publish(msg)
+    
+    def publish_target_failed(self):
+        """
+        Publish target failed message
+        """
+        msg = Bool()
+        msg.data = True
+        self.target_failed_pub.publish(msg)
     
     def run(self):
         """

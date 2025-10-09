@@ -6,7 +6,8 @@ from kobuki_msgs.msg import BumperEvent
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
-from execution_monitor import ExecutionMonitor
+from geometry_msgs.msg import Point
+from std_msgs.msg import Bool, String
 
 # Constants
 FEET_PER_METER = 3.28084
@@ -55,10 +56,11 @@ class NavigationController:
         self.startup_position = None  # Robot's actual starting position in odom frame (meters)
         self.meters_per_foot = 0.3048  # Conversion factor
         
-        # Execution monitor
-        self.execution_monitor = ExecutionMonitor()
-        self.execution_monitor.set_success_callback(self.on_target_reached)
-        self.execution_monitor.set_failure_callback(self.on_target_failed)
+        # Execution monitor communication
+        self.target_point_pub = rospy.Publisher('/execution_monitor/set_target', Point, queue_size=1)
+        self.target_reached_sub = rospy.Subscriber('/execution_monitor/target_reached', Bool, self.on_target_reached)
+        self.target_failed_sub = rospy.Subscriber('/execution_monitor/target_failed', Bool, self.on_target_failed)
+        self.execution_status_sub = rospy.Subscriber('/execution_monitor/status', String, self.on_execution_status)
         
         # Rate for control loop
         self.rate = rospy.Rate(10)  # 10 Hz
@@ -86,50 +88,70 @@ class NavigationController:
         """
         if self.current_waypoint_index < len(self.waypoints):
             self.current_target = self.waypoints[self.current_waypoint_index]
-            self.execution_monitor.set_target_point(self.current_target[0], self.current_target[1])
+            
+            # Send target point to execution monitor node
+            target_msg = Point()
+            target_msg.x = self.current_target[0]
+            target_msg.y = self.current_target[1]
+            target_msg.z = 0.0  # Not used
+            self.target_point_pub.publish(target_msg)
+            
             rospy.loginfo("Target set to waypoint {}: ({:.2f}, {:.2f}) feet".format(
                 self.current_waypoint_index, self.current_target[0], self.current_target[1]))
         else:
             self.current_target = None
-            self.execution_monitor.set_target_point(None, None)
+            # Send empty target to execution monitor
+            target_msg = Point()
+            target_msg.x = 0.0
+            target_msg.y = 0.0
+            target_msg.z = -1.0  # Special value to indicate no target
+            self.target_point_pub.publish(target_msg)
     
-    def on_target_reached(self):
+    def on_target_reached(self, msg):
         """
         Callback when execution monitor reports success
         """
-        rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
-            self.current_waypoint_index, self.current_target[0], self.current_target[1]))
-        
-        self.current_waypoint_index += 1
-        
-        if self.current_waypoint_index < len(self.waypoints):
-            # Move to next waypoint
-            self.set_next_target()
-            rospy.loginfo("Moving to next waypoint")
-        else:
-            # All waypoints completed
-            self.state = 'COMPLETED'
-            self.current_target = None
-            rospy.loginfo("All waypoints completed!")
+        if msg.data:  # Check if the Bool message is True
+            rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
+                self.current_waypoint_index, self.current_target[0], self.current_target[1]))
+            
+            self.current_waypoint_index += 1
+            
+            if self.current_waypoint_index < len(self.waypoints):
+                # Move to next waypoint
+                self.set_next_target()
+                rospy.loginfo("Moving to next waypoint")
+            else:
+                # All waypoints completed
+                self.state = 'COMPLETED'
+                self.current_target = None
+                rospy.loginfo("All waypoints completed!")
     
-    def on_target_failed(self):
+    def on_target_failed(self, msg):
         """
         Callback when execution monitor reports failure
         """
-        rospy.logwarn("Failed to reach waypoint {}: ({:.2f}, {:.2f}) feet".format(
-            self.current_waypoint_index, self.current_target[0], self.current_target[1]))
-        
-        # For now, just move to the next waypoint
-        # In a full implementation, this would handle the specific failure scenarios
-        self.current_waypoint_index += 1
-        
-        if self.current_waypoint_index < len(self.waypoints):
-            self.set_next_target()
-            rospy.loginfo("Attempting next waypoint after failure")
-        else:
-            self.state = 'COMPLETED'
-            self.current_target = None
-            rospy.logwarn("Navigation completed with failures")
+        if msg.data:  # Check if the Bool message is True
+            rospy.logwarn("Failed to reach waypoint {}: ({:.2f}, {:.2f}) feet".format(
+                self.current_waypoint_index, self.current_target[0], self.current_target[1]))
+            
+            # For now, just move to the next waypoint
+            # In a full implementation, this would handle the specific failure scenarios
+            self.current_waypoint_index += 1
+            
+            if self.current_waypoint_index < len(self.waypoints):
+                self.set_next_target()
+                rospy.loginfo("Attempting next waypoint after failure")
+            else:
+                self.state = 'COMPLETED'
+                self.current_target = None
+                rospy.logwarn("Navigation completed with failures")
+    
+    def on_execution_status(self, msg):
+        """
+        Callback to receive status updates from execution monitor
+        """
+        rospy.loginfo("Execution Monitor: {}".format(msg.data))
     
     def calculate_angle_to_target(self):
         """
@@ -314,12 +336,6 @@ class NavigationController:
         Main control loop
         """
         rospy.loginfo("Navigation Controller starting...")
-        
-        # Start execution monitor in a separate thread
-        import threading
-        monitor_thread = threading.Thread(target=self.execution_monitor.run)
-        monitor_thread.daemon = True
-        monitor_thread.start()
         
         while not rospy.is_shutdown():
             if self.state == 'NAVIGATING':
