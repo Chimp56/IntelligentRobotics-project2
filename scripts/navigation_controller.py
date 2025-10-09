@@ -463,7 +463,7 @@ def main():
     # These are some example points within a typical room
     # Robot will start at (0,0) and navigate to these points
     dummy_waypoints = [
-        (10.0, 5.0),   # 10 feet right, 5 feet up from start, starting at (0,0) this should be a success
+        (10.0, 2.0),   # 10 feet right, 5 feet up from start, starting at (0,0) this should be a success
         (4.0, 10),   # 4 feet right, 2 feet up from start, this should be a failure
         (1.0, 3.0),   # 1 foot right, 3 feet up from start
         (3.0, 4.0),   # 3 feet right, 4 feet up from start
