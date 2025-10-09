@@ -70,6 +70,8 @@ class NavigationController:
         Main control loop
         """
         rospy.loginfo("Navigation Controller starting...")
+        # wait 3 seconds
+        rospy.sleep(3)
         
         while not rospy.is_shutdown():
             if self.state == 'NAVIGATING':

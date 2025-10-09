@@ -38,6 +38,60 @@ class ExecutionMonitor:
         self.rate = rospy.Rate(10)  # 10 Hz
         
         rospy.loginfo("Execution Monitor initialized")
+
+    def run(self):
+        """
+        Main execution loop
+        """
+        rospy.loginfo("Execution Monitor starting...")
+        
+        while not rospy.is_shutdown():
+            self.monitor_execution()
+            self.rate.sleep()
+
+    def monitor_execution(self):
+        """
+        Main monitoring loop - checks progress and determines success/failure
+        """
+        if self.target_point is None:
+            rospy.loginfo("No target point set - skipping monitoring")
+            return
+        
+        if self.current_position is None:
+            rospy.loginfo("No position data available - skipping monitoring")
+            return
+        
+        current_distance = self.calculate_distance_to_target()
+        
+        # Check if target reached
+        if self.is_target_reached():
+            status = "SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance)
+            rospy.loginfo(status)
+            self.publish_status(status)
+            return True
+        
+        # Check if making progress
+        if self.is_making_progress():
+            status = "PROGRESS: Moving towards target. Distance: {:.2f} feet".format(current_distance)
+            rospy.loginfo(status)
+            self.publish_status(status)
+            return False
+        
+        # Check if stuck
+        if self.is_stuck():
+            status = "FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance)
+            rospy.logwarn(status)
+            self.publish_status(status)
+            return True
+        
+        # Still working on it
+        status = "STALLED: Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance)
+        rospy.loginfo(status)
+        self.publish_status(status)
+        return False
+    
+    
+ 
     
     def set_target_callback(self, msg):
         """
@@ -127,57 +181,7 @@ class ExecutionMonitor:
         """
         return self.stuck_counter >= self.max_stuck_iterations
     
-    def monitor_execution(self):
-        """
-        Main monitoring loop - checks progress and determines success/failure
-        """
-        if self.target_point is None:
-            rospy.loginfo("No target point set - skipping monitoring")
-            return
-        
-        if self.current_position is None:
-            rospy.loginfo("No position data available - skipping monitoring")
-            return
-        
-        current_distance = self.calculate_distance_to_target()
-        
-        # Check if target reached
-        if self.is_target_reached():
-            status = "SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance)
-            rospy.loginfo(status)
-            self.publish_status(status)
-            return True
-        
-        # Check if making progress
-        if self.is_making_progress():
-            status = "PROGRESS: Moving towards target. Distance: {:.2f} feet".format(current_distance)
-            rospy.loginfo(status)
-            self.publish_status(status)
-            return False
-        
-        # Check if stuck
-        if self.is_stuck():
-            status = "FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance)
-            rospy.logwarn(status)
-            self.publish_status(status)
-            return True
-        
-        # Still working on it
-        status = "STALLED: Progress stalled but not stuck yet. Distance: {:.2f} feet".format(current_distance)
-        rospy.loginfo(status)
-        self.publish_status(status)
-        return False
-    
-    
-    def run(self):
-        """
-        Main execution loop
-        """
-        rospy.loginfo("Execution Monitor starting...")
-        
-        while not rospy.is_shutdown():
-            self.monitor_execution()
-            self.rate.sleep()
+
 
 if __name__ == '__main__':
     try:
