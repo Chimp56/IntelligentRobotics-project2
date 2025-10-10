@@ -48,7 +48,8 @@ https://wiki.ros.org/cmd_vel_mux
 ```
 git stash
 git pull
-chmod +x scripts/*.py
+chmod +x ~/catkin_ws/src/project2/scripts/*.py
 roslaunch project2 mapping.launch
+
 
 ```
