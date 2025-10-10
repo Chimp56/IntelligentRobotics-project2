@@ -70,21 +70,21 @@ class ExecutionMonitor:
         # Check if target reached
         if self.is_target_reached():
             status = "SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance)
-            rospy.loginfo(status)
+            # rospy.loginfo(status)
             self.publish_status(status)
             return True
         
         # Check if making progress
         if self.is_making_progress():
             status = "PROGRESS: Moving towards target. Distance: {:.2f} feet".format(current_distance)
-            rospy.loginfo(status)
+            # rospy.loginfo(status)
             self.publish_status(status)
             return False
         
         # Check if stuck
         if self.is_stuck():
             status = "FAILURE: Robot appears stuck. Distance: {:.2f} feet".format(current_distance)
-            rospy.logwarn(status)
+            # rospy.logwarn(status)
             self.publish_status(status)
             return True
         
@@ -95,8 +95,6 @@ class ExecutionMonitor:
         return False
     
     
- 
-    
     def set_target_callback(self, msg):
         """
         Callback to receive target point from navigation controller
@@ -104,7 +102,7 @@ class ExecutionMonitor:
         self.target_point = (msg.x, msg.y)
         self.previous_distance = float('inf')
         self.stuck_counter = 0
-        rospy.loginfo("Target point received: ({:.2f}, {:.2f}) feet".format(msg.x, msg.y))
+        # rospy.loginfo("Target point received: ({:.2f}, {:.2f}) feet".format(msg.x, msg.y))
         self.publish_status("Target set to ({:.2f}, {:.2f}) feet".format(msg.x, msg.y))
     
     def publish_status(self, message):

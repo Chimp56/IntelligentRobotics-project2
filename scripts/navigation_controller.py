@@ -139,40 +139,44 @@ class NavigationController:
             self.execution_monitor_ready = True
             rospy.loginfo("Execution Monitor is now ready!")
         
-        if status.startswith("SUCCESS"):
-            rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
-                self.current_waypoint_index, self.current_target[0], self.current_target[1]))
-            
-            self.current_waypoint_index += 1
-            
-            if self.current_waypoint_index < len(self.waypoints):
-                # Move to next waypoint
-                self.set_next_target()
-                rospy.loginfo("Moving to next waypoint")
-            else:
-                # All waypoints completed
-                self.state = 'COMPLETED'
-                self.current_target = None
-                rospy.loginfo("All waypoints completed!")
+        if status.startswith("SUCCESS") and self.current_target is not None:
+                rospy.loginfo("Successfully reached waypoint {}: ({:.2f}, {:.2f}) feet".format(
+                    self.current_waypoint_index, self.current_target[0], self.current_target[1]))
                 
-        elif status.startswith("FAILURE"):
-            rospy.logwarn("Failed to reach waypoint {}: ({:.2f}, {:.2f}) feet".format(
-                self.current_waypoint_index, self.current_target[0], self.current_target[1]))
-            
-            # For now, just move to the next waypoint
-            # In a full implementation, this would handle the specific failure scenarios
-            self.current_waypoint_index += 1
-            
-            if self.current_waypoint_index < len(self.waypoints):
-                self.set_next_target()
-                rospy.loginfo("Attempting next waypoint after failure")
-            else:
-                self.state = 'COMPLETED'
-                self.current_target = None
-                rospy.logwarn("Navigation completed with failures")
+                self.current_waypoint_index += 1
+                
+                if self.current_waypoint_index < len(self.waypoints):
+                    # Move to next waypoint
+                    self.set_next_target()
+                    rospy.loginfo("Moving to next waypoint")
+                else:
+                    # All waypoints completed
+                    self.state = 'COMPLETED'
+                    self.current_target = None
+                    rospy.loginfo("All waypoints completed!")
+                
+        elif status.startswith("FAILURE") and self.current_target is not None:
+                rospy.logwarn("Failed to reach waypoint {}: ({:.2f}, {:.2f}) feet".format(
+                    self.current_waypoint_index, self.current_target[0], self.current_target[1]))
+                
+                # For now, just move to the next waypoint
+                # In a full implementation, this would handle the specific failure scenarios
+                self.current_waypoint_index += 1
+                
+                if self.current_waypoint_index < len(self.waypoints):
+                    self.set_next_target()
+                    rospy.loginfo("Attempting next waypoint after failure")
+                else:
+                    self.state = 'COMPLETED'
+                    self.current_target = None
+                    rospy.logwarn("Navigation completed with failures")
                 
         elif status.startswith("PROGRESS:") or status.startswith("STALLED:"):
             # Just log progress/stalled status, no action needed
+            rospy.loginfo("Execution Monitor: {}".format(status))
+            
+        elif status.startswith("READY:"):
+            # Execution monitor is ready - this is handled by the readiness flag above
             rospy.loginfo("Execution Monitor: {}".format(status))
     
     def wait_for_execution_monitor(self, timeout=10.0):
