@@ -164,7 +164,9 @@ include_directories(
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 catkin_install_python(PROGRAMS
-  scripts/reactive_controller.py
+  scripts/navigation_controller.py
+  scripts/execution_monitor.py
+  scripts/send_waypoints.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
