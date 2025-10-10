@@ -303,9 +303,9 @@ class NavigationController:
             return
         
         # If collision detected, stop
-        if self.collision_detected:
-            self.stop_robot()
-            return
+        # if self.collision_detected:
+        #     self.stop_robot()
+        #     return
         
         # If teleop is active, pause navigation
         if self._teleop_active():
