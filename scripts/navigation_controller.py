@@ -8,6 +8,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
 from std_msgs.msg import String
+from project2.srv import SetWaypoints, SetWaypointsResponse
 
 # Constants
 FEET_PER_METER = 3.28084
@@ -59,6 +60,9 @@ class NavigationController:
         # Execution monitor communication
         self.target_point_pub = rospy.Publisher('/execution_monitor/set_target', Point, queue_size=1)
         self.execution_status_sub = rospy.Subscriber('/execution_monitor/status', String, self.on_execution_status)
+        
+        # ROS service for setting waypoints
+        self.set_waypoints_service = rospy.Service('/navigation_controller/set_waypoints', SetWaypoints, self.handle_set_waypoints)
         
         # Rate for control loop
         self.rate = rospy.Rate(10)  # 10 Hz
@@ -178,6 +182,28 @@ class NavigationController:
         elif status.startswith("READY:"):
             # Execution monitor is ready - this is handled by the readiness flag above
             rospy.loginfo("Execution Monitor: {}".format(status))
+    
+    def handle_set_waypoints(self, req):
+        """
+        ROS service handler to set waypoints from external sources
+        """
+        try:
+            # Convert service request to waypoint list
+            waypoints = []
+            for i in range(0, len(req.x_coords)):
+                if i < len(req.y_coords):
+                    waypoints.append((req.x_coords[i], req.y_coords[i]))
+            
+            rospy.loginfo("Received {} waypoints via service".format(len(waypoints)))
+            
+            # Set the waypoints
+            self.set_waypoints(waypoints)
+            
+            return SetWaypointsResponse(True, "Successfully set {} waypoints".format(len(waypoints)))
+            
+        except Exception as e:
+            rospy.logerr("Error setting waypoints: {}".format(str(e)))
+            return SetWaypointsResponse(False, "Error: {}".format(str(e)))
     
     def wait_for_execution_monitor(self, timeout=10.0):
         """
