@@ -19,6 +19,10 @@
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
   </include>
+  
+  <node pkg="project2" type="task_planner.py" name="task_planner" output="screen">
+  <param name="tasks_text" value="((2, 3), (9, 8))&#10;((12, 9), (4, 14))"/>
+</node>
 
   <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
     <param name="publish_frequency" type="double" value="30.0" />

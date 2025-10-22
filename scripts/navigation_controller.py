@@ -28,7 +28,8 @@ TURN_TOLERANCE = 0.1  # radians (~5.7 degrees)
 class NavigationController:
     def __init__(self):
         self.state = 'IDLE'
-        
+        self.waypoints_sub = rospy.Subscriber('/task_planner/waypoints', String, self._waypoints_callback)
+
         rospy.init_node('navigation_controller', anonymous=True)
         
         # Publishers and subscribers
@@ -102,7 +103,26 @@ class NavigationController:
         else:
             self.state = 'IDLE'
             rospy.loginfo("No waypoints provided")
-    
+
+    def _waypoints_callback(self, msg):
+        """
+        Receive a semicolon-separated list of 'x,y' points in feet,
+        e.g., '2.0,3.0; 9.0,8.0; 12.0,9.0; 4.0,14.0'
+        """
+        text = msg.data.strip()
+        if not text:
+            rospy.logwarn("NavigationController: received empty waypoints list.")
+            return
+        try:
+            pts = []
+            for chunk in text.split(';'):
+                x_str, y_str = chunk.strip().split(',')
+                pts.append((float(x_str), float(y_str)))
+            self.set_waypoints(pts)
+            rospy.loginfo("NavigationController: received %d waypoints from Task Planner.", len(pts))
+        except Exception as e:
+            rospy.logerr("NavigationController: failed to parse waypoints string: %s", e)
+            
     def set_next_target(self):
         """
         Set the next waypoint as the current target
