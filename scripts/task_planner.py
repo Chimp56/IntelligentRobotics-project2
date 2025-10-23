@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import rospy
 import re
 import math
@@ -38,7 +39,7 @@ class TaskPlanner(object):
         # Flattened best sequence of points (each element: dict with keys: "id","kind","pt")
         self.best_sequence = []
         self.remaining_sequence = []   # remaining points not yet attempted
-        self.current_index = 0         # index into full sequence of the point we’re attempting
+        self.current_index = 0         # index into full sequence of the point were attempting
         self.republished_after_failure = False
 
         rospy.loginfo("TaskPlanner: initialized.")
@@ -83,7 +84,7 @@ class TaskPlanner(object):
         """
         We watch for SUCCESS / FAILURE to keep our index aligned and to handle the
         special rule:
-          - If FAILURE on a **start** point, remove that task’s **destination** from the plan.
+          - If FAILURE on a **start** point, remove that tasks **destination** from the plan.
         NavigationController already advances on SUCCESS or FAILURE, so we only need
         to (a) track our current index and (b) possibly re-publish a shortened plan.
         """
@@ -172,61 +173,67 @@ class TaskPlanner(object):
         Return a list of dicts: [{"id":k,"kind":"START"/"DEST","pt":(x,y)}, ...]
         that minimizes straight-line travel distance, subject to START < DEST
         for each task. Start point for cost is the robot’s (0,0) feet at startup.
+        (Python 2 compatible: no 'nonlocal'.)
         """
-        # Build point list
+        # Build list of (kind, task_id, point)
         elements = []
         for t in tasks:
             elements.append(("START", t["id"], t["start"]))
             elements.append(("DEST",  t["id"], t["dest"]))
 
-        # Backtracking to generate only valid linear extensions
-        best_seq = None
-        best_cost = float('inf')
+        # Holders replace 'nonlocal' vars
+        best_seq_holder = [None]
+        best_cost_holder = [float('inf')]
 
         def valid_to_add(partial, cand):
             kind, tid, _ = cand
             if kind == "DEST":
-                # Can only place DEST after its START appears in partial
-                return any((k == "START" and t == tid) for (k, t, _) in partial)
+                # Only place DEST after its START is already in partial
+                for k, t, _pt in partial:
+                    if k == "START" and t == tid:
+                        return True
+                return False
             return True
 
         def cost_of(sequence):
             if not sequence:
                 return 0.0
             cost = 0.0
-            # Start at robot origin (0,0) in feet
-            prev = (0.0, 0.0)
-            for _, _, pt in sequence:
+            prev = (0.0, 0.0)  # robot origin in feet
+            for _k, _t, pt in sequence:
                 cost += math.hypot(pt[0] - prev[0], pt[1] - prev[1])
                 prev = pt
             return cost
 
         def backtrack(partial, remaining):
-            nonlocal best_seq, best_cost
-            # simple lower bound: straight-line to next candidate from origin; skip for clarity in this assignment
+            # If nothing remains, evaluate this complete sequence
             if not remaining:
                 c = cost_of(partial)
-                if c < best_cost:
-                    best_cost = c
-                    best_seq = list(partial)
+                if c < best_cost_holder[0]:
+                    best_cost_holder[0] = c
+                    best_seq_holder[0] = list(partial)
                 return
-            # small heuristic: try nearer points first (greedy order) to speed up pruning
+
+            # Small heuristic: try nearer points first to speed search
             rem_sorted = sorted(remaining, key=lambda e: math.hypot(e[2][0], e[2][1]))
             for i, cand in enumerate(rem_sorted):
                 if not valid_to_add(partial, cand):
                     continue
-                nxt_remaining = rem_sorted[:i] + rem_sorted[i+1:]
+                next_remaining = rem_sorted[:i] + rem_sorted[i+1:]
                 partial.append(cand)
-                # optional pruning: if partial cost already exceeds best_cost, skip
-                # (estimate with last segment only—good enough here)
-                if best_seq is None or cost_of(partial) <= best_cost:
-                    backtrack(partial, nxt_remaining)
+
+                # Cheap pruning: if partial cost already exceeds best, skip
+                if best_seq_holder[0] is None or cost_of(partial) <= best_cost_holder[0]:
+                    backtrack(partial, next_remaining)
+
                 partial.pop()
 
         backtrack([], elements)
-        # Convert to the dict format we’ll keep in memory
-        seq = [{"id": tid, "kind": kind, "pt": (pt[0], pt[1])} for (kind, tid, pt) in best_seq]
+
+        seq = [{"id": tid, "kind": kind, "pt": (pt[0], pt[1])}
+            for (kind, tid, pt) in best_seq_holder[0]]
         return seq
+
         
 
 if __name__ == "__main__":
