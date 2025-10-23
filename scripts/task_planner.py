@@ -16,7 +16,7 @@ TASK_LINE_RE = re.compile(
 
 class TaskPlanner(object):
     def __init__(self):
-        rospy.init_node('task_planner', anonymous=True)
+        rospy.init_node('task_planner', anonymous=False)
 
         # --- Params ---
         # Path to a text file whose lines look like: ((2, 3), (9, 8))
