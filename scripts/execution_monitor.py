@@ -150,7 +150,7 @@ class ExecutionMonitor:
             current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
             current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
             
-            self.current_position = (current_x_feet, current_y_feet)
+            self.current_position = (current_x_feet, -current_y_feet)
     
     def calculate_distance_to_target(self):
         """
