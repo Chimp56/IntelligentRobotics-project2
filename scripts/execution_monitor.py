@@ -28,7 +28,7 @@ class ExecutionMonitor:
         self.target_point = None
         self.previous_distance = float('inf')
         self.stuck_counter = 0
-        self.max_stuck_iterations = 50  # 5 seconds at 10Hz
+        self.max_stuck_iterations = 100  # 10 seconds at 10Hz
         self.success_threshold = 1.0  # 1 foot
         
         # Coordinate system setup
