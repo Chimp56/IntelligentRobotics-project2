@@ -38,7 +38,7 @@ class NavigationController(object):
         self.start_x_feet = rospy.get_param("~start_x_feet", 0.0)
         self.start_y_feet = rospy.get_param("~start_y_feet", 0.0)
         self.start_theta_deg = rospy.get_param("~start_theta_deg", 0.0)
-        self.yaw_offset_rad = math.radians(self.start_theta_deg)
+        self.yaw_offset_rad = math.radians(self.start_theta_deg - 90.0)
 
         # --- Publishers / Subscribers ---
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel_mux/input/navi',
