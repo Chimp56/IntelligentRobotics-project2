@@ -2,11 +2,11 @@
   <arg name="gui"        default="true"/>
   <arg name="world_file" default="$(find project2)/worlds/project2.world"/>
 
-<!-- Initial pose -->
-  <arg name="x" default="0.5"/>
-  <arg name="y" default="0.5"/>
+<!-- Initial pose (in feet and degrees) -->
+  <arg name="x_feet" default="1.0"/>
+  <arg name="y_feet" default="1.0"/>
   <arg name="z" default="0.0"/>
-  <arg name="yaw" default="0.0"/>
+  <arg name="yaw_deg" default="90.0"/>
 
   <arg name="base"       value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
   <arg name="battery"    value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 -->
@@ -24,20 +24,20 @@
     <arg name="base" value="$(arg base)"/>
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
-    <arg name="x" value="$(arg x)"/>
-    <arg name="y" value="$(arg y)"/>
+    <arg name="x" value="$(eval arg('x_feet') / 3.28084)"/>
+    <arg name="y" value="$(eval arg('y_feet') / 3.28084)"/>
     <arg name="z" value="$(arg z)"/>
-    <arg name="yaw" value="$(arg yaw)"/>
+    <arg name="yaw" value="$(eval arg('yaw_deg') * 3.14159265359 / 180.0)"/>
   </include>
   
   <node pkg="project2" type="task_planner.py" name="task_planner" output="screen">
     <param name="tasks_text"
            value="((2, 3), (9, 8))&#10;((12, 9), (4, 14))"/>
 
-    <!-- CHANGE THESE to match where you spawn the robot in the world, in FEET -->
-    <param name="start_x_feet" value="2.0"/>
-    <param name="start_y_feet" value="3.0"/>
-    <param name="start_theta_deg" value="90.0"/>
+    <!-- Pass spawn position directly (already in feet and degrees) -->
+    <param name="start_x_feet" value="$(arg x_feet)"/>
+    <param name="start_y_feet" value="$(arg y_feet)"/>
+    <param name="start_theta_deg" value="$(arg yaw_deg)"/>
   </node>
 
   <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
@@ -58,8 +58,16 @@
   <arg name="custom_gmapping_launch_file" default="$(find turtlebot_navigation)/launch/includes/gmapping/$(arg 3d_sensor)_gmapping.launch.xml"/>
   <include file="$(arg custom_gmapping_launch_file)"/>
 
-  <node pkg="project2" type="execution_monitor.py" name="execution_monitor" output="screen"/>
-  <node pkg="project2" type="navigation_controller.py" name="navigation_controller" output="screen"/>
+  <node pkg="project2" type="execution_monitor.py" name="execution_monitor" output="screen">
+    <!-- Pass spawn position so monitor knows robot's absolute starting location -->
+    <param name="start_x_feet" value="$(arg x_feet)"/>
+    <param name="start_y_feet" value="$(arg y_feet)"/>
+  </node>
+  <node pkg="project2" type="navigation_controller.py" name="navigation_controller" output="screen">
+    <!-- Pass spawn position so controller knows its absolute starting location -->
+    <param name="start_x_feet" value="$(arg x_feet)"/>
+    <param name="start_y_feet" value="$(arg y_feet)"/>
+  </node>
 
 
   <include file="$(find turtlebot_rviz_launchers)/launch/view_navigation.launch"/>

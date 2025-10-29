@@ -29,10 +29,13 @@ To start mapping the environment using SLAM, run:
 roslaunch project2 mapping.launch
 ```
 
-To modify starting postion
+To modify starting position
 ```bash
-# Example: Start at custom position in meters (e.g., x=1.5, y=1.0, yaw=2)
-roslaunch project2 mapping.launch x:=1.5 y:=1.0 yaw:=2
+# Example: Start at custom position in feet and degrees (e.g., x=5.0 feet, y=8.0 feet, yaw=180 degrees)
+roslaunch project2 mapping.launch x_feet:=5.0 y_feet:=8.0 yaw_deg:=180.0
+
+# Default values: x_feet=1.0, y_feet=1.0, yaw_deg=90.0
+roslaunch project2 mapping.launch
 ```
 
 
