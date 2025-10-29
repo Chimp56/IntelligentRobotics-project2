@@ -75,7 +75,7 @@ class ExecutionMonitor:
         
         rospy.loginfo_throttle(2.0, "Current: (%.2f, %.2f) ft, Target: (%.2f, %.2f) ft, Delta: (%.2f, %.2f)",
                                self.current_position[0], self.current_position[1], self.target_point[0], self.target_point[1], 
-                               current_distance[0], current_distance[1])
+                               self.target_point[0] - self.current_position[0], self.target_point[1] - self.current_position[1])
 
         # Check if target reached
         if self.is_target_reached():
