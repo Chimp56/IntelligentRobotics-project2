@@ -285,7 +285,7 @@ class NavigationController(object):
             current_yaw += 2 * math.pi
         
         # Debug: Log current orientation vs desired
-        rospy.loginfo_throttle(2.0, "Yaw(off=%.1f): curr=%.1f°, desired=%.1f°", 
+        rospy.loginfo_throttle(2.0, "Yaw(off=%.1f): curr=%.1f, desired=%.1f", 
                                math.degrees(self.yaw_offset_rad),
                                math.degrees(current_yaw), math.degrees(desired_angle))
 
