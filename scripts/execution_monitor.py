@@ -146,8 +146,8 @@ class ExecutionMonitor:
             gazebo_y_meters = data.pose.pose.position.y - self.startup_position[1]
             
             # Transform from Gazebo coordinates to world coordinates
-            current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
-            current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
+            current_x_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_y_feet
             
             self.current_position = (current_x_feet, current_y_feet)
     
