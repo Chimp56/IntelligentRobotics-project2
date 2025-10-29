@@ -100,10 +100,13 @@ class TaskPlanner(object):
                           self.start_x_feet, self.start_y_feet)
 
         # Calculate displacement from reference origin, convert to feet, then add starting offset
-        dx_m = px_m - self.startup_origin_m[0]
-        dy_m = py_m - self.startup_origin_m[1]
-        self.current_pose_ft = (dx_m * FEET_PER_METER + self.start_x_feet, 
-                                dy_m * FEET_PER_METER + self.start_y_feet)
+        # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90° rotation)
+        gazebo_dx_m = px_m - self.startup_origin_m[0]
+        gazebo_dy_m = py_m - self.startup_origin_m[1]
+        
+        # Transform from Gazebo coordinates to world coordinates
+        self.current_pose_ft = (gazebo_dy_m * FEET_PER_METER + self.start_x_feet, 
+                                -gazebo_dx_m * FEET_PER_METER + self.start_y_feet)
 
     def _status_cb(self, msg):
         """

@@ -271,11 +271,15 @@ class NavigationController(object):
 
         # Current robot position in FEET
         # Calculate displacement from startup in meters, convert to feet, then add starting offset
-        current_x_m = self.odom_data.pose.pose.position.x - self.startup_position[0]
-        current_y_m = self.odom_data.pose.pose.position.y - self.startup_position[1]
-
-        current_x_ft = (current_x_m / self.meters_per_foot) + self.start_x_feet
-        current_y_ft = (current_y_m / self.meters_per_foot) + self.start_y_feet
+        # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90° rotation)
+        gazebo_x_m = self.odom_data.pose.pose.position.x - self.startup_position[0]
+        gazebo_y_m = self.odom_data.pose.pose.position.y - self.startup_position[1]
+        
+        # Transform from Gazebo coordinates to world coordinates
+        # If robot moves in Gazebo +X, that's world -Y
+        # If robot moves in Gazebo +Y, that's world +X
+        current_x_ft = (gazebo_y_m / self.meters_per_foot) + self.start_x_feet
+        current_y_ft = (-gazebo_x_m / self.meters_per_foot) + self.start_y_feet
 
         target_x_ft, target_y_ft = self.current_target
 

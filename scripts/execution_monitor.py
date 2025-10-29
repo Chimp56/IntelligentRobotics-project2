@@ -137,11 +137,13 @@ class ExecutionMonitor:
                               self.start_x_feet, self.start_y_feet)
             
             # Calculate displacement from reference origin, convert to feet, then add starting offset
-            current_x_meters = data.pose.pose.position.x - self.startup_position[0]
-            current_y_meters = data.pose.pose.position.y - self.startup_position[1]
+            # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90° rotation)
+            gazebo_x_meters = data.pose.pose.position.x - self.startup_position[0]
+            gazebo_y_meters = data.pose.pose.position.y - self.startup_position[1]
             
-            current_x_feet = (current_x_meters / self.meters_per_foot) + self.start_x_feet
-            current_y_feet = (current_y_meters / self.meters_per_foot) + self.start_y_feet
+            # Transform from Gazebo coordinates to world coordinates
+            current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
             
             self.current_position = (current_x_feet, current_y_feet)
     
