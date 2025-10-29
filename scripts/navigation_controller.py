@@ -291,6 +291,10 @@ class NavigationController(object):
 
         current_orientation = self.odom_data.pose.pose.orientation
         current_yaw = self.quaternion_to_yaw(current_orientation)
+        
+        # Debug: Log current orientation vs desired
+        rospy.loginfo_throttle(2.0, "Current yaw: %.1f deg, Desired: %.1f deg", 
+                               math.degrees(current_yaw), math.degrees(desired_angle))
 
         angle_diff = desired_angle - current_yaw
 
@@ -299,6 +303,8 @@ class NavigationController(object):
             angle_diff -= 2 * math.pi
         while angle_diff < -math.pi:
             angle_diff += 2 * math.pi
+        
+        rospy.loginfo_throttle(2.0, "Angle difference: %.1f deg", math.degrees(angle_diff))
 
         return angle_diff
 
