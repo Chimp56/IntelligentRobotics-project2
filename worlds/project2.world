@@ -500,10 +500,10 @@
       <pose frame=''>-2.94452 2.19246 0 0 -0 0</pose>
     </model>
     <state world_name='default'>
-      <sim_time>42 878000000</sim_time>
-      <real_time>45 979451562</real_time>
-      <wall_time>1761704274 963689390</wall_time>
-      <iterations>42878</iterations>
+      <sim_time>200 179000000</sim_time>
+      <real_time>251 810830095</real_time>
+      <wall_time>1761705250 687944626</wall_time>
+      <iterations>157301</iterations>
       <model name='ground_plane'>
         <pose frame=''>0 0 0 0 -0 0</pose>
         <scale>1 1 1</scale>
@@ -515,61 +515,61 @@
         </link>
       </model>
       <model name='project2'>
-        <pose frame=''>-2.94452 2.19246 0 0 -0 0</pose>
+        <pose frame=''>2.02017 2.80286 0 0 0 -1.57106</pose>
         <scale>1 1 1</scale>
         <model name='room_hallway'>
-          <pose frame=''>-2.94452 2.19246 0 0 -0 0</pose>
+          <pose frame=''>2.02017 2.80286 0 0 0 -1.57106</pose>
           <scale>1 1 1</scale>
           <link name='Wall_0'>
-            <pose frame=''>-2.94727 0.01746 0 0 -0 0</pose>
+            <pose frame=''>-0.154831 2.80618 0 0 0 -1.57106</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_1'>
-            <pose frame=''>-0.022269 2.19246 0 0 -0 1.5708</pose>
+            <pose frame=''>2.01941 -0.119386 0 0 0 -0.000256</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_10'>
-            <pose frame=''>-5.20177 2.89746 0 0 -0 0</pose>
+            <pose frame=''>2.72575 5.05993 0 0 0 -1.57106</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_2'>
-            <pose frame=''>-0.017269 4.36746 0 0 -0 0</pose>
+            <pose frame=''>4.19441 -0.124952 0 0 0 -1.57106</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_3'>
-            <pose frame=''>-2.93727 4.36746 0 0 -0 3.14159</pose>
+            <pose frame=''>4.19517 2.79505 0 0 -0 1.57053</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_4'>
-            <pose frame=''>-5.86727 2.19246 0 0 0 -1.57309</pose>
+            <pose frame=''>2.02093 5.72562 0 0 -0 3.13904</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_6'>
-            <pose frame=''>-3.69727 0.01746 0 0 -0 0</pose>
+            <pose frame=''>-0.154636 3.55618 0 0 0 -1.57106</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_7'>
-            <pose frame=''>-1.52228 1.44246 0 0 -0 1.5708</pose>
+            <pose frame=''>1.2698 1.38082 0 0 0 -0.000256</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
           </link>
           <link name='Wall_8'>
-            <pose frame=''>-2.19727 2.86746 0 0 -0 3.14159</pose>
+            <pose frame=''>2.69497 2.05544 0 0 -0 1.57053</pose>
             <velocity>0 0 0 0 -0 0</velocity>
             <acceleration>0 0 0 0 -0 0</acceleration>
             <wrench>0 0 0 0 -0 0</wrench>
@@ -582,7 +582,7 @@
     </state>
     <gui fullscreen='0'>
       <camera name='user_camera'>
-        <pose frame=''>-2.68205 2.37601 14.5591 0 1.5698 3.14019</pose>
+        <pose frame=''>2.25533 2.67208 11.6308 2e-06 1.5578 1.56419</pose>
         <view_controller>orbit</view_controller>
         <projection_type>perspective</projection_type>
       </camera>
