@@ -137,7 +137,7 @@ class ExecutionMonitor:
                               self.start_x_feet, self.start_y_feet)
             
             # Calculate displacement from reference origin, convert to feet, then add starting offset
-            # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90° rotation)
+            # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90 degree rotation)
             gazebo_x_meters = data.pose.pose.position.x - self.startup_position[0]
             gazebo_y_meters = data.pose.pose.position.y - self.startup_position[1]
             
