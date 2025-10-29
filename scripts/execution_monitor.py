@@ -9,6 +9,10 @@ class ExecutionMonitor:
     def __init__(self):
         rospy.init_node('execution_monitor', anonymous=True)
         
+        # Get robot starting position in feet from launch file
+        self.start_x_feet = rospy.get_param("~start_x_feet", 0.0)
+        self.start_y_feet = rospy.get_param("~start_y_feet", 0.0)
+        
         # Odometry subscriber
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
         
@@ -38,6 +42,8 @@ class ExecutionMonitor:
         self.rate = rospy.Rate(10)  # 10 Hz
         
         rospy.loginfo("Execution Monitor initialized")
+        rospy.loginfo("Starting position: (%.2f, %.2f) feet", 
+                      self.start_x_feet, self.start_y_feet)
         
         # Publish initial status to indicate readiness
         rospy.sleep(0.5)  # Brief delay to ensure publishers are ready
@@ -119,21 +125,23 @@ class ExecutionMonitor:
         """
         self.odom_data = data
         if data is not None:
-            # Set startup position on first odometry reading
+            # Set odom reference frame origin on first odometry reading
             if self.startup_position is None:
                 self.startup_position = (
                     data.pose.pose.position.x,
                     data.pose.pose.position.y
                 )
-                rospy.loginfo("Startup position set to: ({:.3f}, {:.3f}) meters".format(
+                rospy.loginfo("Odom reference frame origin: ({:.3f}, {:.3f}) meters".format(
                     self.startup_position[0], self.startup_position[1]))
+                rospy.loginfo("Robot actual world position: (%.2f, %.2f) feet",
+                              self.start_x_feet, self.start_y_feet)
             
-            # Convert odometry position to feet, with (0,0) at startup position
+            # Calculate displacement from reference origin, convert to feet, then add starting offset
             current_x_meters = data.pose.pose.position.x - self.startup_position[0]
             current_y_meters = data.pose.pose.position.y - self.startup_position[1]
             
-            current_x_feet = current_x_meters / self.meters_per_foot
-            current_y_feet = current_y_meters / self.meters_per_foot
+            current_x_feet = (current_x_meters / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (current_y_meters / self.meters_per_foot) + self.start_y_feet
             
             self.current_position = (current_x_feet, current_y_feet)
     
