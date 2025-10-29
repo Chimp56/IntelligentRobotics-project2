@@ -100,10 +100,14 @@ class TaskPlanner(object):
                           self.start_x_feet, self.start_y_feet)
 
         # Calculate displacement from reference origin, convert to feet, then add starting offset
-        dx_m = px_m - self.startup_origin_m[0]
-        dy_m = py_m - self.startup_origin_m[1]
-        self.current_pose_ft = (dx_m * FEET_PER_METER + self.start_x_feet, 
-                                dy_m * FEET_PER_METER + self.start_y_feet)
+        # Note: Odom Y is inverted in the sensor reading
+        gazebo_dx_m = px_m - self.startup_origin_m[0]
+        gazebo_dy_m = -(py_m - self.startup_origin_m[1])  # Negate because odom Y is inverted
+        
+        # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
+        # world_x = gazebo_y, world_y = -gazebo_x
+        self.current_pose_ft = (gazebo_dy_m * FEET_PER_METER + self.start_x_feet, 
+                                -gazebo_dx_m * FEET_PER_METER + self.start_y_feet)
 
     def _status_cb(self, msg):
         """

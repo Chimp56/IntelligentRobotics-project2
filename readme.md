@@ -38,6 +38,12 @@ roslaunch project2 mapping.launch x_feet:=5.0 y_feet:=8.0 yaw_deg:=180.0
 roslaunch project2 mapping.launch
 ```
 
+**Coordinate System:**
+- +X axis: Right/East
+- +Y axis: Forward/North  
+- 0° heading: Pointing along +X (right)
+- 90° heading: Pointing along +Y (forward)
+
 
 
 To control turtlebot using keyboard, open a new terminal and run:

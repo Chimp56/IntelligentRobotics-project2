@@ -24,6 +24,7 @@
     <arg name="base" value="$(arg base)"/>
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
+    <!-- Spawn uses Gazebo coordinates  (feet to meters conversion only) -->
     <arg name="x" value="$(eval arg('x_feet') / 3.28084)"/>
     <arg name="y" value="$(eval arg('y_feet') / 3.28084)"/>
     <arg name="z" value="$(arg z)"/>
@@ -32,7 +33,7 @@
   
   <node pkg="project2" type="task_planner.py" name="task_planner" output="screen">
     <param name="tasks_text"
-           value="((2, 3), (9, 8))&#10;((12, 9), (4, 14))"/>
+           value="((5, 1), (9, 8))&#10;((12, 9), (4, 14))"/>
 
     <!-- Pass spawn position directly (already in feet and degrees) -->
     <param name="start_x_feet" value="$(arg x_feet)"/>

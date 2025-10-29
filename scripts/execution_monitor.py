@@ -73,6 +73,10 @@ class ExecutionMonitor:
         
         current_distance = self.calculate_distance_to_target()
         
+        rospy.loginfo_throttle(2.0, "Current: (%.2f, %.2f) ft, Target: (%.2f, %.2f) ft, Delta: (%.2f, %.2f)",
+                               self.current_position[0], self.current_position[1], self.target_point[0], self.target_point[1], 
+                               self.target_point[0] - self.current_position[0], self.target_point[1] - self.current_position[1])
+
         # Check if target reached
         if self.is_target_reached():
             status = "SUCCESS: Target reached! Distance: {:.2f} feet".format(current_distance)
@@ -137,13 +141,16 @@ class ExecutionMonitor:
                               self.start_x_feet, self.start_y_feet)
             
             # Calculate displacement from reference origin, convert to feet, then add starting offset
-            current_x_meters = data.pose.pose.position.x - self.startup_position[0]
-            current_y_meters = data.pose.pose.position.y - self.startup_position[1]
+            # Note: Odom Y is inverted in the sensor reading
+            gazebo_x_meters = data.pose.pose.position.x - self.startup_position[0]
+            gazebo_y_meters = -(data.pose.pose.position.y - self.startup_position[1])  # Negate because odom Y is inverted
             
-            current_x_feet = (current_x_meters / self.meters_per_foot) + self.start_x_feet
-            current_y_feet = (current_y_meters / self.meters_per_foot) + self.start_y_feet
+            # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
+            # world_x = gazebo_y, world_y = -gazebo_x
+            current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
             
-            self.current_position = (current_x_feet, current_y_feet)
+            self.current_position = (current_x_feet, -current_y_feet)
     
     def calculate_distance_to_target(self):
         """
