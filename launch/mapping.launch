@@ -25,8 +25,8 @@
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
     <!-- Spawn uses Gazebo coordinates  (feet to meters conversion only) -->
-    <arg name="x" value="$(eval arg('x_feet') / 3.28084)"/>
-    <arg name="y" value="$(eval arg('y_feet') / 3.28084)"/>
+    <arg name="x" value="$(eval -1.0 * arg('y_feet') / 3.28084)"/>
+    <arg name="y" value="$(eval -1.0 * arg('x_feet') / 3.28084)"/>
     <arg name="z" value="$(arg z)"/>
     <arg name="yaw" value="$(eval arg('yaw_deg') * 3.14159265359 / 180.0)"/>
   </include>
