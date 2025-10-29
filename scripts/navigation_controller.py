@@ -37,6 +37,8 @@ class NavigationController(object):
         # Get robot starting position in feet from launch file
         self.start_x_feet = rospy.get_param("~start_x_feet", 0.0)
         self.start_y_feet = rospy.get_param("~start_y_feet", 0.0)
+        self.start_theta_deg = rospy.get_param("~start_theta_deg", 0.0)
+        self.yaw_offset_rad = math.radians(self.start_theta_deg - 90.0)
 
         # --- Publishers / Subscribers ---
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel_mux/input/navi',
@@ -275,6 +277,8 @@ class NavigationController(object):
         current_orientation = self.odom_data.pose.pose.orientation
         current_yaw = self.quaternion_to_yaw(current_orientation)
         
+        current_yaw += self.yaw_offset_rad
+
         # Normalize to [-pi, pi]
         while current_yaw > math.pi:
             current_yaw -= 2 * math.pi
@@ -282,7 +286,8 @@ class NavigationController(object):
             current_yaw += 2 * math.pi
         
         # Debug: Log current orientation vs desired
-        rospy.loginfo_throttle(2.0, "World yaw: %.1f deg, Desired: %.1f deg", 
+        rospy.loginfo_throttle(2.0, "Yaw(off=%.1f): curr=%.1f, desired=%.1f", 
+                               math.degrees(self.yaw_offset_rad),
                                math.degrees(current_yaw), math.degrees(desired_angle))
 
         angle_diff = desired_angle - current_yaw

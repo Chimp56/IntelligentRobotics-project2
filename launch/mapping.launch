@@ -6,7 +6,7 @@
   <arg name="x_feet" default="1.0"/>
   <arg name="y_feet" default="1.0"/>
   <arg name="z" default="0.0"/>
-  <arg name="yaw_deg" default="90.0"/>
+  <arg name="yaw_deg" default="0.0"/>
 
   <arg name="base"       value="$(optenv TURTLEBOT_BASE kobuki)"/> <!-- create, roomba -->
   <arg name="battery"    value="$(optenv TURTLEBOT_BATTERY /proc/acpi/battery/BAT0)"/>  <!-- /proc/acpi/battery/BAT0 -->
@@ -68,6 +68,7 @@
     <!-- Pass spawn position so controller knows its absolute starting location -->
     <param name="start_x_feet" value="$(arg x_feet)"/>
     <param name="start_y_feet" value="$(arg y_feet)"/>
+    <param name="start_theta_deg" value="$(arg yaw_deg)"/>
   </node>
 
 
