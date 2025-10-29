@@ -29,6 +29,13 @@ To start mapping the environment using SLAM, run:
 roslaunch project2 mapping.launch
 ```
 
+To modify starting postion
+```bash
+# Example: Start at custom position in meters (e.g., x=1.5, y=1.0, yaw=2)
+roslaunch project2 mapping.launch x:=1.5 y:=1.0 yaw:=2
+```
+
+
 
 To control turtlebot using keyboard, open a new terminal and run:
 ```bash
