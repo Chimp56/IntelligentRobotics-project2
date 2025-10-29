@@ -271,7 +271,9 @@ class NavigationController(object):
                                current_x_ft, current_y_ft, target_x_ft, target_y_ft, 
                                dx, dy, math.degrees(desired_angle))
 
-        current_yaw = self.odom_data.pose.pose.orientation
+        # Extract yaw (radians) from quaternion orientation
+        current_orientation = self.odom_data.pose.pose.orientation
+        current_yaw = self.quaternion_to_yaw(current_orientation)
         
         # Normalize to [-pi, pi]
         while current_yaw > math.pi:
@@ -373,8 +375,8 @@ class NavigationController(object):
                          + CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER)
 
         if len(front_ranges) > 0 and np.min(front_ranges) < dist_thresh_m:
-            self.obstacle_detected = False
-            rospy.loginfo("Obstacle close at %.2f m", np.min(front_ranges))
+            self.obstacle_detected = True
+            rospy.loginfo("Obstacle detected at %.2f m", np.min(front_ranges))
         else:
             self.obstacle_detected = False
 
