@@ -43,7 +43,7 @@ class TaskPlanner(object):
         # listen for NEW task sets at runtime
         self.new_tasks_sub = rospy.Subscriber("/task_planner/new_task_text",
                                               String,
-                                              self._new_tasks_cb)
+                                              self._new_tasks_calback)
 
         # --- State ---
         # robot odom origin in meters when we first heard odom
@@ -162,27 +162,49 @@ class TaskPlanner(object):
 
         # We ignore PROGRESS / STALLED here.
 
-    def _new_tasks_cb(self, msg):
+    def _new_tasks_calback(self, msg):
         """
-        Runtime update:
-        User does:
-          rostopic pub /task_planner/new_task_text std_msgs/String "data: '((8,2),(6,7))\n((3,5),(2,1))'"
-        We parse, replace old tasks, plan again, and publish.
+        Allow updating tasks live while the system is already running.
+        msg.data should be something like:
+            "((8,2),(6,7))\n((3,5),(2,1))"
+        (one task per line)
         """
-        raw = msg.data.strip()
-        rospy.loginfo("TaskPlanner: received NEW task text:\n%s", raw)
-
-        new_tasks = self._parse_task_lines(raw.splitlines())
-        if not new_tasks:
-            rospy.logwarn("TaskPlanner: new task text invalid / empty, ignoring.")
+        txt = msg.data.strip()
+        if not txt:
+            rospy.logwarn("TaskPlanner: received empty new_task_text.")
             return
 
-        # overwrite tasks with the new set
-        self.tasks = new_tasks
-        rospy.loginfo("TaskPlanner: loaded %d new tasks at runtime.", len(self.tasks))
+        rospy.loginfo("TaskPlanner: got new_task_text:\n%s", txt)
 
-        # replan + publish
-        self._plan_and_publish()
+        lines = [ln for ln in txt.splitlines() if ln.strip()]
+        new_tasks = []
+        for i, ln in enumerate(lines):
+            m = TASK_LINE_RE.search(ln)
+            if not m:
+                rospy.logwarn("TaskPlanner: skipping bad line %d: %s",
+                            i+1, ln.rstrip())
+                continue
+            sx, sy, dx, dy = map(float, m.groups())
+            new_tasks.append({
+                "id": i,
+                "start": (sx, sy),
+                "dest": (dx, dy)
+            })
+
+        if not new_tasks:
+            rospy.logwarn("TaskPlanner: parsed 0 valid new tasks.")
+            return
+
+        rospy.loginfo("TaskPlanner: parsed %d new tasks; re-planning.",
+                    len(new_tasks))
+
+        # reset task state
+        self.tasks = new_tasks
+        self.best_sequence = self._compute_best_sequence(self.tasks)
+        self.remaining_sequence = list(self.best_sequence)
+
+        # publish the new route immediately (this triggers nav to start moving again)
+        self._publish_remaining_sequence()
 
     # ------------------------------------------------------------------
     # helpers
