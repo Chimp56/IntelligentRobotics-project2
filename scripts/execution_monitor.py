@@ -141,13 +141,14 @@ class ExecutionMonitor:
                               self.start_x_feet, self.start_y_feet)
             
             # Calculate displacement from reference origin, convert to feet, then add starting offset
-            # Note: Gazebo X maps to world -Y, Gazebo Y maps to world X (90 degree rotation)
+            # Note: Odom Y is inverted in the sensor reading
             gazebo_x_meters = data.pose.pose.position.x - self.startup_position[0]
-            gazebo_y_meters = data.pose.pose.position.y - self.startup_position[1]
+            gazebo_y_meters = -(data.pose.pose.position.y - self.startup_position[1])  # Negate because odom Y is inverted
             
-            # Transform from Gazebo coordinates to world coordinates
-            current_x_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_x_feet
-            current_y_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_y_feet
+            # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
+            # world_x = gazebo_y, world_y = -gazebo_x
+            current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
             
             self.current_position = (current_x_feet, current_y_feet)
     
