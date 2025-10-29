@@ -298,7 +298,7 @@ class NavigationController(object):
         rospy.loginfo_throttle(2.0, "Current yaw: %.1f deg, Desired: %.1f deg", 
                                math.degrees(current_yaw), math.degrees(desired_angle))
 
-        angle_diff = desired_angle - current_yaw
+        angle_diff = -(desired_angle - current_yaw)
 
         # normalize to [-pi, pi]
         while angle_diff > math.pi:
