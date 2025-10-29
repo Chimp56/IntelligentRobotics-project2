@@ -32,7 +32,6 @@ class ExecutionMonitor:
         self.success_threshold = 1.0  # 1 foot
         
         # Coordinate system setup
-        self.startup_position = None  # Robot's actual starting position in odom frame (meters)
         self.meters_per_foot = 0.3048  # Conversion factor
         
         # Node name for logging
@@ -129,28 +128,10 @@ class ExecutionMonitor:
         """
         self.odom_data = data
         if data is not None:
-            # Set odom reference frame origin on first odometry reading
-            if self.startup_position is None:
-                self.startup_position = (
-                    data.pose.pose.position.x,
-                    data.pose.pose.position.y
-                )
-                rospy.loginfo("Odom reference frame origin: ({:.3f}, {:.3f}) meters".format(
-                    self.startup_position[0], self.startup_position[1]))
-                rospy.loginfo("Robot actual world position: (%.2f, %.2f) feet",
-                              self.start_x_feet, self.start_y_feet)
+            current_x_feet = (data.pose.pose.position.x / self.meters_per_foot) + self.start_x_feet
+            current_y_feet = (data.pose.pose.position.y / self.meters_per_foot) + self.start_y_feet
             
-            # Calculate displacement from reference origin, convert to feet, then add starting offset
-            # Note: Odom Y is inverted in the sensor reading
-            gazebo_x_meters = data.pose.pose.position.x - self.startup_position[0]
-            gazebo_y_meters = -(data.pose.pose.position.y - self.startup_position[1])  # Negate because odom Y is inverted
-            
-            # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
-            # world_x = gazebo_y, world_y = -gazebo_x
-            current_x_feet = (gazebo_y_meters / self.meters_per_foot) + self.start_x_feet
-            current_y_feet = (-gazebo_x_meters / self.meters_per_foot) + self.start_y_feet
-            
-            self.current_position = (current_x_feet, -current_y_feet)
+            self.current_position = (current_x_feet, current_y_feet)
     
     def calculate_distance_to_target(self):
         """

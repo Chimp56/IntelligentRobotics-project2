@@ -75,8 +75,6 @@ class NavigationController(object):
         self.waypoints = []
         self.current_waypoint_index = 0
 
-        # We'll localize in feet using odom as (0,0) at startup
-        self.startup_position = None    # (meters,meters)
         self.meters_per_foot = 0.3048   # constant
 
         # Execution monitor readiness
@@ -258,27 +256,8 @@ class NavigationController(object):
         if self.odom_data is None or self.current_target is None:
             return 0.0
 
-        # Record odom position on first reading as local reference frame origin
-        if self.startup_position is None:
-            self.startup_position = (
-                self.odom_data.pose.pose.position.x,
-                self.odom_data.pose.pose.position.y
-            )
-            rospy.loginfo("Odom reference frame origin: (%.3f, %.3f) m", 
-                          self.startup_position[0], self.startup_position[1])
-            rospy.loginfo("Robot actual world position: (%.2f, %.2f) feet",
-                          self.start_x_feet, self.start_y_feet)
-
-        # Current robot position in FEET
-        # Calculate displacement from startup in meters, convert to feet, then add starting offset
-        # Note: Odom Y is inverted in the sensor reading
-        gazebo_x_m = self.odom_data.pose.pose.position.x - self.startup_position[0]
-        gazebo_y_m = -(self.odom_data.pose.pose.position.y - self.startup_position[1])  # Negate because odom Y is inverted
-        
-        # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
-        # world_x = gazebo_y, world_y = -gazebo_x
-        current_x_ft = (gazebo_y_m / self.meters_per_foot) + self.start_x_feet
-        current_y_ft = (-gazebo_x_m / self.meters_per_foot) + self.start_y_feet
+        current_x_ft = (self.odom_data.pose.pose.position.x / self.meters_per_foot) + self.start_x_feet
+        current_y_ft = (self.odom_data.pose.pose.position.y / self.meters_per_foot) + self.start_y_feet
 
         target_x_ft, target_y_ft = self.current_target
 
@@ -292,11 +271,7 @@ class NavigationController(object):
                                current_x_ft, current_y_ft, target_x_ft, target_y_ft, 
                                dx, dy, math.degrees(desired_angle))
 
-        current_orientation = self.odom_data.pose.pose.orientation
-        gazebo_yaw = self.quaternion_to_yaw(current_orientation)
-        
-        # Transform yaw from Gazebo to world coordinates (90 degree rotation)
-        current_yaw = gazebo_yaw + math.pi / 2.0  # Add 90 degrees
+        current_yaw = self.odom_data.pose.pose.orientation
         
         # Normalize to [-pi, pi]
         while current_yaw > math.pi:
@@ -305,8 +280,8 @@ class NavigationController(object):
             current_yaw += 2 * math.pi
         
         # Debug: Log current orientation vs desired
-        rospy.loginfo_throttle(2.0, "Gazebo yaw: %.1f deg, World yaw: %.1f deg, Desired: %.1f deg", 
-                               math.degrees(gazebo_yaw), math.degrees(current_yaw), math.degrees(desired_angle))
+        rospy.loginfo_throttle(2.0, "World yaw: %.1f deg, Desired: %.1f deg", 
+                               math.degrees(current_yaw), math.degrees(desired_angle))
 
         angle_diff = desired_angle - current_yaw
 

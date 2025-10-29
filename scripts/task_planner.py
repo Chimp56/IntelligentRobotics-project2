@@ -44,7 +44,6 @@ class TaskPlanner(object):
                                              String, queue_size=1, latch=True)
 
         # -------- Internal State --------
-        self.startup_origin_m = None   # (mx,my) at first odom, for runtime tracking
         self.current_pose_ft = None    # robot pose in FEET (absolute world coordinates)
 
         # Tasks: [{"id":i, "start":(sx,sy), "dest":(dx,dy)}, ...]
@@ -91,23 +90,8 @@ class TaskPlanner(object):
         px_m = msg.pose.pose.position.x
         py_m = msg.pose.pose.position.y
 
-        if self.startup_origin_m is None:
-            # This defines a *local* odom reference frame origin for displacement tracking.
-            self.startup_origin_m = (px_m, py_m)
-            rospy.loginfo("TaskPlanner: odom reference frame origin set at (%.3f, %.3f) m",
-                          px_m, py_m)
-            rospy.loginfo("TaskPlanner: robot actual world position (%.2f, %.2f) feet",
-                          self.start_x_feet, self.start_y_feet)
-
-        # Calculate displacement from reference origin, convert to feet, then add starting offset
-        # Note: Odom Y is inverted in the sensor reading
-        gazebo_dx_m = px_m - self.startup_origin_m[0]
-        gazebo_dy_m = -(py_m - self.startup_origin_m[1])  # Negate because odom Y is inverted
-        
-        # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
-        # world_x = gazebo_y, world_y = -gazebo_x
-        self.current_pose_ft = (gazebo_dy_m * FEET_PER_METER + self.start_x_feet, 
-                                -gazebo_dx_m * FEET_PER_METER + self.start_y_feet)
+        self.current_pose_ft = (px_m * FEET_PER_METER + self.start_x_feet, 
+                                py_m * FEET_PER_METER + self.start_y_feet)
 
     def _status_cb(self, msg):
         """
