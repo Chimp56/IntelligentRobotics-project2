@@ -2,6 +2,7 @@
 import rospy
 import numpy as np
 import math
+import random
 from kobuki_msgs.msg import BumperEvent
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import LaserScan
@@ -26,6 +27,11 @@ TELEOP_EPS = 1e-3
 FORWARD_SPEED = 0.2       # m/s
 ANGULAR_SPEED = 0.5       # rad/s
 TURN_TOLERANCE = 0.1      # radians (~5.7 deg)
+
+# Obstacle avoidance constants
+ESCAPE_TURN_DEGREE_ANGLE = 45.0  # degrees
+ESCAPE_TURN_DEGREE_ANGLE_VARIANCE = 15.0  # degrees
+SYMMETRIC_THRESHOLD = 0.2  # ratio difference threshold for symmetric detection
 
 
 class NavigationController(object):
@@ -81,6 +87,11 @@ class NavigationController(object):
 
         # Execution monitor readiness
         self.execution_monitor_ready = False
+
+        # Obstacle avoidance state
+        self.obstacle_detected = False
+        self.turn_in_progress = False
+        self.turn_start_yaw = None
 
         # Control loop rate
         self.rate = rospy.Rate(10)  # 10 Hz
@@ -354,40 +365,235 @@ class NavigationController(object):
         self.cmd_vel_pub.publish(twist)
 
     def check_obstacles_ahead(self):
-        if self.laser_data is None:
+        """
+        Check if obstacles are within FRONT_ESCAPE_DISTANCE_FEET
+        """
+        front_ranges, distance_threshold = self._compute_front_ranges_and_threshold()
+        if front_ranges is None:
             return
 
+        # Debug logging
+        if len(front_ranges) > 0:
+            rospy.loginfo("Closest obstacle: {:.2f}m".format(np.min(front_ranges)))
+
+        # Within threshold?
+        if len(front_ranges) > 0 and np.min(front_ranges) < distance_threshold:
+            self.obstacle_detected = True
+            rospy.loginfo("Obstacle detected")
+            rospy.loginfo("Obstacle detected at {:.2f}m (threshold: {:.2f}m)".format(np.min(front_ranges), distance_threshold))
+
+            # Determine if obstacle is symmetric or asymmetric
+            if self.is_obstacle_symmetric(front_ranges):
+                self.on_symmetric_obstacle_ahead()
+            else:
+                self.on_asymmetric_obstacle_ahead()
+        else:
+            self.obstacle_detected = False
+
+    def on_symmetric_obstacle_ahead(self):
+        """
+        Handle symmetric obstacle by turning a random degree angle
+        """
+        rospy.loginfo("Symmetric obstacle detected - executing escape turn")
+        
+        # Calculate random turn angle
+        min_angle = ESCAPE_TURN_DEGREE_ANGLE - ESCAPE_TURN_DEGREE_ANGLE_VARIANCE
+        max_angle = ESCAPE_TURN_DEGREE_ANGLE + ESCAPE_TURN_DEGREE_ANGLE_VARIANCE
+        turn_angle = random.uniform(min_angle, max_angle)
+        
+        # Convert to radians
+        turn_radians = np.radians(turn_angle)
+        
+        rospy.loginfo("Turning {:.1f} degrees ({:.2f} radians)".format(turn_angle, turn_radians))
+        
+        # Execute turn
+        self.execute_turn(turn_radians)
+        
+        # Reset obstacle detection after turn
+        self.obstacle_detected = False
+
+    def on_asymmetric_obstacle_ahead(self):
+        """
+        Handle asymmetric obstacle by turning towards the clearer side only while
+        asymmetric obstacles remain within the front threshold.
+        """
+        rospy.loginfo("Asymmetric obstacle detected - turning while asymmetric obstacle ahead")
+
+        rate = rospy.Rate(10)
+        angular_velocity = 0.5  # rad/s
+
+        while not rospy.is_shutdown() and not self.collision_detected:
+            front_ranges, distance_threshold = self._compute_front_ranges_and_threshold()
+            if front_ranges is None or len(front_ranges) == 0:
+                break
+
+            nearest = np.min(front_ranges)
+            rospy.loginfo("Closest obstacle (asym turn): {:.2f}m".format(nearest))
+
+            # Stop if no longer within threshold or if obstacle becomes symmetric
+            if nearest >= distance_threshold or self.is_obstacle_symmetric(front_ranges):
+                break
+
+            left_avg, right_avg = self._split_left_right(front_ranges)
+
+            turn_msg = Twist()
+            turn_msg.angular.z = angular_velocity if left_avg > right_avg else -angular_velocity
+            self.cmd_vel_pub.publish(turn_msg)
+            rate.sleep()
+
+        # Stop turning
+        self.reset_velocity()
+        self._set_position_after_turn()
+        self.obstacle_detected = False
+
+    def is_obstacle_symmetric(self, front_ranges=None):
+        """
+        Determine if obstacle is symmetric by comparing left and right sides
+        """
+        if front_ranges is None:
+            front_ranges, _ = self._compute_front_ranges_and_threshold()
+            if front_ranges is None:
+                return True
+
+        left_avg, right_avg = self._split_left_right(front_ranges)
+        
+        # Calculate ratio difference
+        if left_avg == 0 and right_avg == 0:
+            return True  # Both sides blocked, treat as symmetric
+        
+        avg_distance = (left_avg + right_avg) / 2.0
+        if avg_distance == 0:
+            return True
+        
+        ratio_diff = abs(left_avg - right_avg) / avg_distance
+        
+        # If difference is small, obstacle is symmetric
+        return ratio_diff < SYMMETRIC_THRESHOLD
+
+    def _compute_front_ranges_and_threshold(self):
+        """
+        Compute front-sector laser ranges and the effective distance threshold.
+        Returns (front_ranges, distance_threshold). front_ranges is a 1-D numpy array
+        of valid readings within the front sector. Returns (None, None) if laser data is missing.
+        """
+        if self.laser_data is None:
+            return None, None
+
+        # Effective threshold in meters (feet + camera-to-bumper + camera-to-base offsets)
+        distance_threshold = FRONT_ESCAPE_DISTANCE_FEET * METERS_PER_FEET
+        distance_threshold = distance_threshold + CAMERA_TO_BUMPER_OFFSET_METER + CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER
+
         ranges = np.array(self.laser_data.ranges)
+        angle_min = self.laser_data.angle_min
+        angle_increment = self.laser_data.angle_increment
+
+        # Filter out invalid readings (inf, nan)
         ranges = ranges[np.isfinite(ranges)]
 
-        # Approx front -30deg to +30deg
-        angle_min = self.laser_data.angle_min
-        angle_inc = self.laser_data.angle_increment
-
-        front_start_idx = int((-math.pi/6 - angle_min) / angle_inc)
-        front_end_idx   = int(( math.pi/6 - angle_min) / angle_inc)
-
+        # Front sector (roughly -30 to +30 degrees)
+        front_start_idx = int((-np.pi/6 - angle_min) / angle_increment)
+        front_end_idx = int((np.pi/6 - angle_min) / angle_increment)
         front_start_idx = max(0, front_start_idx)
-        front_end_idx   = min(len(ranges), front_end_idx)
+        front_end_idx = min(len(ranges), front_end_idx)
 
         front_ranges = ranges[front_start_idx:front_end_idx]
         front_ranges = front_ranges[np.isfinite(front_ranges)]
         front_ranges = front_ranges[front_ranges < self.laser_data.range_max]
 
-        # feet -> meters, plus camera->bumper offset
-        dist_thresh_m = (FRONT_ESCAPE_DISTANCE_FEET * METERS_PER_FEET
-                         + CAMERA_TO_BUMPER_OFFSET_METER
-                         + CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER)
+        return front_ranges, distance_threshold
 
-        if len(front_ranges) > 0 and np.min(front_ranges) < dist_thresh_m:
-            self.obstacle_detected = True
-            rospy.loginfo("Obstacle detected at %.2f m", np.min(front_ranges))
+    def _split_left_right(self, front_ranges):
+        """
+        Split front ranges into left and right halves and return average distances.
+        Returns (left_avg, right_avg) in meters.
+        """
+        if len(front_ranges) == 0:
+            return 0.0, 0.0
+        
+        mid = len(front_ranges) // 2
+        left_ranges = front_ranges[:mid]
+        right_ranges = front_ranges[mid:]
+        
+        left_avg = np.mean(left_ranges) if len(left_ranges) > 0 else 0.0
+        right_avg = np.mean(right_ranges) if len(right_ranges) > 0 else 0.0
+        
+        return left_avg, right_avg
+
+    def execute_turn(self, turn_radians):
+        """
+        Execute a turn for the specified angle in radians.
+        """
+        if self.odom_data is None:
+            return
+        
+        # Record starting yaw
+        current_orientation = self.odom_data.pose.pose.orientation
+        self.turn_start_yaw = self.quaternion_to_yaw(current_orientation)
+        self.turn_in_progress = True
+        
+        # Determine turn direction (always take shortest path)
+        if turn_radians < 0:
+            angular_velocity = -ANGULAR_SPEED
+            target_turn = abs(turn_radians)
         else:
-            self.obstacle_detected = False
+            angular_velocity = ANGULAR_SPEED
+            target_turn = turn_radians
+        
+        rate = rospy.Rate(10)
+        total_turned = 0.0
+        
+        while not rospy.is_shutdown() and total_turned < target_turn and not self.collision_detected:
+            if self.odom_data is None:
+                break
+                
+            current_orientation = self.odom_data.pose.pose.orientation
+            current_yaw = self.quaternion_to_yaw(current_orientation)
+            
+            # Calculate how much we've turned
+            angle_diff = current_yaw - self.turn_start_yaw
+            
+            # Normalize to [-pi, pi]
+            while angle_diff > math.pi:
+                angle_diff -= 2 * math.pi
+            while angle_diff < -math.pi:
+                angle_diff += 2 * math.pi
+            
+            total_turned = abs(angle_diff)
+            
+            # Continue turning
+            twist = Twist()
+            twist.angular.z = angular_velocity
+            self.cmd_vel_pub.publish(twist)
+            rate.sleep()
+        
+        # Stop turning
+        self.reset_velocity()
+        self._set_position_after_turn()
+        self.turn_in_progress = False
+        self.turn_start_yaw = None
+
+    def reset_velocity(self):
+        """Stop all movement"""
+        twist = Twist()
+        self.cmd_vel_pub.publish(twist)
+
+    def _set_position_after_turn(self):
+        """
+        Placeholder for updating position after turn if needed.
+        Currently just logs that turn completed.
+        """
+        rospy.loginfo("Turn completed")
 
     def handle_obstacle(self):
-        # Simple placeholder. Could spin in place, etc.
-        return
+        """
+        Handle obstacle avoidance - this is called from navigate_to_target
+        when obstacle_detected is True. The actual handling is done in
+        check_obstacles_ahead() via on_symmetric_obstacle_ahead() or
+        on_asymmetric_obstacle_ahead().
+        """
+        # The obstacle handling is already done in check_obstacles_ahead()
+        # This method exists for compatibility but doesn't need to do anything
+        pass
 
     # ---------------- Callbacks ----------------
     def bumper_callback(self, data):
