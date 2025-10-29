@@ -33,6 +33,10 @@ class NavigationController(object):
         self.state = 'IDLE'
 
         rospy.init_node('navigation_controller', anonymous=True)
+        
+        # Get robot starting position in feet from launch file
+        self.start_x_feet = rospy.get_param("~start_x_feet", 0.0)
+        self.start_y_feet = rospy.get_param("~start_y_feet", 0.0)
 
         # --- Publishers / Subscribers ---
         self.cmd_vel_pub = rospy.Publisher('/cmd_vel_mux/input/navi',
@@ -82,6 +86,8 @@ class NavigationController(object):
         self.rate = rospy.Rate(10)  # 10 Hz
 
         rospy.loginfo("Navigation Controller initialized")
+        rospy.loginfo("Starting position: (%.2f, %.2f) feet", 
+                      self.start_x_feet, self.start_y_feet)
 
     def run(self):
         rospy.loginfo("Navigation Controller starting...")
@@ -252,21 +258,24 @@ class NavigationController(object):
         if self.odom_data is None or self.current_target is None:
             return 0.0
 
-        # Record odom position on first reading so we can localize in FEET
+        # Record odom position on first reading as local reference frame origin
         if self.startup_position is None:
             self.startup_position = (
                 self.odom_data.pose.pose.position.x,
                 self.odom_data.pose.pose.position.y
             )
-            rospy.loginfo("Controller startup position set to: (%.3f, %.3f) m",
+            rospy.loginfo("Odom reference frame origin: (%.3f, %.3f) m", 
                           self.startup_position[0], self.startup_position[1])
+            rospy.loginfo("Robot actual world position: (%.2f, %.2f) feet",
+                          self.start_x_feet, self.start_y_feet)
 
-        # Current robot position in FEET, relative to startup
+        # Current robot position in FEET
+        # Calculate displacement from startup in meters, convert to feet, then add starting offset
         current_x_m = self.odom_data.pose.pose.position.x - self.startup_position[0]
         current_y_m = self.odom_data.pose.pose.position.y - self.startup_position[1]
 
-        current_x_ft = current_x_m / self.meters_per_foot
-        current_y_ft = current_y_m / self.meters_per_foot
+        current_x_ft = (current_x_m / self.meters_per_foot) + self.start_x_feet
+        current_y_ft = (current_y_m / self.meters_per_foot) + self.start_y_feet
 
         target_x_ft, target_y_ft = self.current_target
 
