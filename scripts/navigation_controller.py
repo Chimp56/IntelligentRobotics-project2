@@ -277,8 +277,8 @@ class NavigationController(object):
         
         # Transform from Gazebo coordinates to world coordinates (90 degree rotation)
         # world_x = gazebo_y, world_y = -gazebo_x
-        current_x_ft = (gazebo_x_m / self.meters_per_foot) + self.start_x_feet
-        current_y_ft = (gazebo_y_m / self.meters_per_foot) + self.start_y_feet
+        current_x_ft = (gazebo_y_m / self.meters_per_foot) + self.start_x_feet
+        current_y_ft = (-gazebo_x_m / self.meters_per_foot) + self.start_y_feet
 
         target_x_ft, target_y_ft = self.current_target
 
