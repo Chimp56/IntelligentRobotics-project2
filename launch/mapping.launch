@@ -24,12 +24,11 @@
     <arg name="base" value="$(arg base)"/>
     <arg name="stacks" value="$(arg stacks)"/>
     <arg name="3d_sensor" value="$(arg 3d_sensor)"/>
-    <!-- Transform world coordinates to Gazebo: gazebo_x = -world_y, gazebo_y = world_x -->
-    <arg name="x" value="$(eval -arg('y_feet') / 3.28084)"/>
-    <arg name="y" value="$(eval arg('x_feet') / 3.28084)"/>
+    <!-- Spawn uses Gazebo coordinates  (feet to meters conversion only) -->
+    <arg name="x" value="$(eval arg('x_feet') / 3.28084)"/>
+    <arg name="y" value="$(eval arg('y_feet') / 3.28084)"/>
     <arg name="z" value="$(arg z)"/>
-    <!-- Adjust yaw angle for 90° rotation: gazebo_yaw = world_yaw - 90° -->
-    <arg name="yaw" value="$(eval (arg('yaw_deg') - 90.0) * 3.14159265359 / 180.0)"/>
+    <arg name="yaw" value="$(eval arg('yaw_deg') * 3.14159265359 / 180.0)"/>
   </include>
   
   <node pkg="project2" type="task_planner.py" name="task_planner" output="screen">
