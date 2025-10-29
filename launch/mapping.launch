@@ -68,6 +68,7 @@
     <!-- Pass spawn position so controller knows its absolute starting location -->
     <param name="start_x_feet" value="$(arg x_feet)"/>
     <param name="start_y_feet" value="$(arg y_feet)"/>
+    <param name="start_theta_deg" value="$(arg yaw_deg)"/>
   </node>
 
 
