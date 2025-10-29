@@ -279,10 +279,15 @@ class NavigationController(object):
 
         target_x_ft, target_y_ft = self.current_target
 
-        desired_angle = math.atan2(
-            target_y_ft - current_y_ft,
-            target_x_ft - current_x_ft
-        )
+        dx = target_x_ft - current_x_ft
+        dy = target_y_ft - current_y_ft
+
+        desired_angle = math.atan2(dy, dx)
+        
+        # Debug: Log current position, target, and desired heading
+        rospy.loginfo_throttle(2.0, "Current: (%.2f, %.2f) ft, Target: (%.2f, %.2f) ft, Delta: (%.2f, %.2f), Desired angle: %.1f deg",
+                               current_x_ft, current_y_ft, target_x_ft, target_y_ft, 
+                               dx, dy, math.degrees(desired_angle))
 
         current_orientation = self.odom_data.pose.pose.orientation
         current_yaw = self.quaternion_to_yaw(current_orientation)
