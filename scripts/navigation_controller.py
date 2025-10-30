@@ -18,7 +18,7 @@ FRONT_ESCAPE_DISTANCE_FEET = 1.0  # Increased from 0.5 to be less sensitive
 CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER = 0.087
 CAMERA_TO_BUMPER_OFFSET_METER = 0.40
 FRONT_SCAN_ANGLE_DEG = 20.0  # Narrower scan angle (reduced from ~30 degrees)
-MIN_OBSTACLE_READINGS = 3  # Require multiple readings for obstacle detection
+MIN_OBSTACLE_READINGS = 8  # Require multiple readings for obstacle detection
 
 COLLISION_TIMEOUT_SEC = 3.0
 BUMPER_DEBOUNCE_SEC = 0.5
@@ -34,6 +34,9 @@ TURN_TOLERANCE = 0.1   # rad (~5.7 deg)
 ESCAPE_TURN_DEGREE_ANGLE = 45.0  # degrees
 ESCAPE_TURN_DEGREE_ANGLE_VARIANCE = 15.0  # degrees
 SYMMETRIC_THRESHOLD = 0.05  # ratio difference threshold for symmetric detection (lower = more asymmetric)
+AVOID_ARC_SPEED_SCALE = 0.4  # percent of FORWARD_SPEED while arcing around
+AVOID_TIMEOUT_SEC = 3.0      # stop avoidance after this many seconds
+CLEARANCE_EXIT_SCALE = 1.2   # exit when min distance > threshold * this
 
 
 class NavigationController(object):
@@ -488,28 +491,36 @@ class NavigationController(object):
         Handle asymmetric obstacle by turning towards the clearer side only while
         asymmetric obstacles remain within the front threshold.
         """
-        rospy.loginfo("Asymmetric obstacle detected - turning while asymmetric obstacle ahead")
+        rospy.loginfo("Asymmetric obstacle detected - arcing toward open side")
 
         rate = rospy.Rate(10)
         angular_velocity = 0.5  # rad/s
+        start_time = rospy.Time.now()
 
         while not rospy.is_shutdown() and not self.collision_detected:
+            # Timeout safeguard to prevent getting stuck
+            if (rospy.Time.now() - start_time).to_sec() > AVOID_TIMEOUT_SEC:
+                rospy.loginfo("Avoidance timeout reached; resuming course")
+                break
+
             front_ranges, distance_threshold = self._compute_front_ranges_and_threshold()
             if front_ranges is None or len(front_ranges) == 0:
                 break
 
             nearest = np.min(front_ranges)
-            rospy.loginfo("Closest obstacle (asym turn): {:.2f}m".format(nearest))
+            rospy.loginfo("Closest obstacle (asym arc): {:.2f}m".format(nearest))
 
-            # Stop if no longer within threshold or if obstacle becomes symmetric
-            if nearest >= distance_threshold or self.is_obstacle_symmetric(front_ranges):
+            # Exit if we have gained sufficient clearance or obstacle looks symmetric now
+            if nearest >= distance_threshold * CLEARANCE_EXIT_SCALE or self.is_obstacle_symmetric(front_ranges):
                 break
 
             left_avg, right_avg = self._split_left_right(front_ranges)
 
-            turn_msg = Twist()
-            turn_msg.angular.z = angular_velocity if left_avg > right_avg else -angular_velocity
-            self.cmd_vel_pub.publish(turn_msg)
+            # Arc: move forward slowly while turning toward the clearer side
+            twist = Twist()
+            twist.linear.x = FORWARD_SPEED * AVOID_ARC_SPEED_SCALE
+            twist.angular.z = angular_velocity if left_avg > right_avg else -angular_velocity
+            self.cmd_vel_pub.publish(twist)
             rate.sleep()
 
         # Stop turning
