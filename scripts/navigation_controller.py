@@ -28,6 +28,8 @@ TELEOP_EPS = 1e-3
 FORWARD_SPEED = 0.2    # m/s
 ANGULAR_SPEED = 0.5    # rad/s
 TURN_TOLERANCE = 0.1   # rad (~5.7 deg)
+BACKOFF_SPEED = 0.2    # m/s (reverse speed on bumper)
+BACKOFF_DURATION_SEC = 0.8
 
 
 # Obstacle avoidance constants
@@ -90,6 +92,7 @@ class NavigationController(object):
         self.last_nonzero_teleop_time = None
         self.collision_time = None
         self.collision_release_time = None
+        self.backoff_until = None
 
         # active plan
         self.waypoints = []            # [(x_ft,y_ft), ...]
@@ -287,6 +290,19 @@ class NavigationController(object):
         3. avoid obstacle crudely,
         4. pause if teleop override is active.
         """
+        # Handle bumper back-off first
+        if self.backoff_until is not None:
+            if (rospy.Time.now() - self.backoff_until).to_sec() < 0.0:
+                twist = Twist()
+                twist.linear.x = -BACKOFF_SPEED
+                self.cmd_vel_pub.publish(twist)
+                rospy.loginfo_throttle(0.5, "NavCtrl: backing off due to bumper")
+                return
+            else:
+                # Backoff complete
+                self.backoff_until = None
+                self.collision_detected = False
+                self.bumper_pressed = False
         if self.current_target is None:
             self.stop_robot()
             return
@@ -727,7 +743,12 @@ class NavigationController(object):
                 self.bumper_pressed = True
                 self.collision_detected = True
                 self.collision_time = rospy.Time.now()
-                self.stop_robot()
+                # Initiate timed back-off
+                self.backoff_until = rospy.Time.now() + rospy.Duration(BACKOFF_DURATION_SEC)
+                # Start backing immediately
+                twist = Twist()
+                twist.linear.x = -BACKOFF_SPEED
+                self.cmd_vel_pub.publish(twist)
         elif data.state == BumperEvent.RELEASED:
             rospy.loginfo("NavCtrl: bumper released %s", data.bumper)
             self.bumper_pressed = False
