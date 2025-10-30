@@ -31,7 +31,7 @@ class PathPlanner:
         self.current_orientation_rad = 0.0  # yaw in radians
         self.meters_per_foot = 0.3048
         
-        rospy.loginfo("Path Planner initialized (on-demand mode)")
+        rospy.loginfo("Path Planner initialized (service mode)")
         rospy.loginfo("Starting position: (%.2f, %.2f) feet, heading %.1f deg",
                      self.start_x_feet, self.start_y_feet, self.start_theta_deg)
         rospy.loginfo("Service available at: /path_planner/get_segment")
@@ -40,7 +40,7 @@ class PathPlanner:
         """
         Service handler - calculates path segment to requested target.
         """
-        rospy.loginfo("Path planning request received for target: (%.2f, %.2f) feet",
+        rospy.loginfo("Path planning service request: target (%.2f, %.2f) feet",
                      req.target_x, req.target_y)
         
         response = GetPathSegmentResponse()
@@ -67,7 +67,7 @@ class PathPlanner:
             response.success = True
             response.message = "Path segment calculated successfully"
             
-            rospy.loginfo("Planned segment: Turn %.2f rad (%.1f deg), Distance %.2f ft",
+            rospy.loginfo("Path Planner: Plan - Turn %.2f rad (%.1f deg), Distance %.2f ft",
                          turn_angle, math.degrees(turn_angle), distance)
             
         except Exception as e:

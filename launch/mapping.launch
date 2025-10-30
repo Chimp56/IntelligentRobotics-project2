@@ -41,6 +41,13 @@
     <param name="start_theta_deg" value="$(arg yaw_deg)"/>
   </node>
 
+  <node pkg="project2" type="path_planner.py" name="path_planner" output="screen">
+    <!-- Pass spawn position so path planner knows robot's absolute starting location -->
+    <param name="start_x_feet" value="$(arg x_feet)"/>
+    <param name="start_y_feet" value="$(arg y_feet)"/>
+    <param name="start_theta_deg" value="$(arg yaw_deg)"/>
+  </node>
+
   <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
     <param name="publish_frequency" type="double" value="30.0" />
   </node>

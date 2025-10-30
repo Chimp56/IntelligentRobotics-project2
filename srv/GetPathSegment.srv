@@ -1,0 +1,10 @@
+# Request: target coordinates (in feet)
+float64 target_x
+float64 target_y
+---
+# Response: path segment description
+float64 turn_angle    # radians to turn (-pi to pi)
+float64 distance      # feet to travel
+bool success          # whether the planning was successful
+string message        # status message
+

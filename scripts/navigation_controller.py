@@ -8,6 +8,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Point
 from std_msgs.msg import String
+from project2.srv import GetPathSegment
 
 # --- Constants ---
 FEET_PER_METER = 3.28084
@@ -63,6 +64,12 @@ class NavigationController(object):
         self.execution_status_sub = rospy.Subscriber('/execution_monitor/status',
                                                      String, self.on_execution_status)
 
+        # Path planner service client
+        rospy.loginfo("Waiting for path planner service...")
+        rospy.wait_for_service('/path_planner/get_segment', timeout=10.0)
+        self.path_planner_service = rospy.ServiceProxy('/path_planner/get_segment', GetPathSegment)
+        rospy.loginfo("Path planner service connected")
+
         # --- Internal nav state ---
         self.odom_data = None
         self.laser_data = None
@@ -76,6 +83,11 @@ class NavigationController(object):
         self.current_target = None
         self.waypoints = []
         self.current_waypoint_index = 0
+
+        # Path planning state
+        self.planned_turn_angle = 0.0
+        self.planned_distance = 0.0
+        self.path_planned = False
 
         self.meters_per_foot = 0.3048   # constant
 
@@ -152,6 +164,7 @@ class NavigationController(object):
     def set_next_target(self):
         """
         Tell the execution monitor about the next waypoint,
+        request a path plan from path planner,
         and update self.current_target.
         """
         if self.current_waypoint_index < len(self.waypoints):
@@ -167,6 +180,9 @@ class NavigationController(object):
                           self.current_waypoint_index,
                           self.current_target[0],
                           self.current_target[1])
+            
+            # Request path plan from path planner
+            self.request_path_plan()
         else:
             self.current_target = None
             target_msg = Point()
@@ -174,6 +190,42 @@ class NavigationController(object):
             target_msg.y = 0.0
             target_msg.z = -1.0  # 'no target'
             self.target_point_pub.publish(target_msg)
+
+    def request_path_plan(self):
+        """
+        Request a path plan from the path planner service for the current target.
+        """
+        if self.current_target is None:
+            rospy.logwarn("Cannot request path plan: no current target")
+            return False
+        
+        try:
+            rospy.loginfo("Requesting path plan to (%.2f, %.2f) feet", 
+                         self.current_target[0], self.current_target[1])
+            
+            # Call the path planner service
+            response = self.path_planner_service(
+                target_x=self.current_target[0],
+                target_y=self.current_target[1]
+            )
+            
+            if response.success:
+                self.planned_turn_angle = response.turn_angle
+                self.planned_distance = response.distance
+                self.path_planned = True
+                
+                rospy.loginfo("Path plan received - Turn: %.2f rad (%.1f deg), Distance: %.2f ft",
+                             response.turn_angle, math.degrees(response.turn_angle), response.distance)
+                return True
+            else:
+                rospy.logerr("Path planning failed: %s", response.message)
+                self.path_planned = False
+                return False
+                
+        except rospy.ServiceException as e:
+            rospy.logerr("Path planner service call failed: %s", e)
+            self.path_planned = False
+            return False
 
     # ---------------- Execution monitor feedback ----------------
     def on_execution_status(self, msg):
@@ -255,28 +307,18 @@ class NavigationController(object):
 
     # ---------------- Motion helpers ----------------
     def calculate_angle_to_target(self):
-        if self.odom_data is None or self.current_target is None:
+        """
+        Calculate angle difference to target using the planned turn angle from path planner.
+        """
+        if not self.path_planned or self.current_target is None:
             return 0.0
 
-        current_x_ft = (self.odom_data.pose.pose.position.x / self.meters_per_foot) + self.start_x_feet
-        current_y_ft = (self.odom_data.pose.pose.position.y / self.meters_per_foot) + self.start_y_feet
-
-        target_x_ft, target_y_ft = self.current_target
-
-        dx = target_x_ft - current_x_ft
-        dy = target_y_ft - current_y_ft
-
-        desired_angle = math.atan2(dy, dx)
-        
-        # Debug: Log current position, target, and desired heading
-        rospy.loginfo_throttle(2.0, "Current: (%.2f, %.2f) ft, Target: (%.2f, %.2f) ft, Delta: (%.2f, %.2f), Desired angle: %.1f deg",
-                               current_x_ft, current_y_ft, target_x_ft, target_y_ft, 
-                               dx, dy, math.degrees(desired_angle))
-
         # Extract yaw (radians) from quaternion orientation
+        if self.odom_data is None:
+            return 0.0
+            
         current_orientation = self.odom_data.pose.pose.orientation
         current_yaw = self.quaternion_to_yaw(current_orientation)
-        
         current_yaw += self.yaw_offset_rad
 
         # Normalize to [-pi, pi]
@@ -285,10 +327,18 @@ class NavigationController(object):
         while current_yaw < -math.pi:
             current_yaw += 2 * math.pi
         
-        # Debug: Log current orientation vs desired
-        rospy.loginfo_throttle(2.0, "Yaw(off=%.1f): curr=%.1f, desired=%.1f", 
-                               math.degrees(self.yaw_offset_rad),
-                               math.degrees(current_yaw), math.degrees(desired_angle))
+        # Use the planned turn angle to calculate how much we still need to turn
+        # The planned turn angle is the difference from when the plan was requested
+        # We need to track how much we've turned since then
+        
+        # For now, use a simple approach: calculate direct angle to target
+        current_x_ft = (self.odom_data.pose.pose.position.x / self.meters_per_foot) + self.start_x_feet
+        current_y_ft = (self.odom_data.pose.pose.position.y / self.meters_per_foot) + self.start_y_feet
+
+        target_x_ft, target_y_ft = self.current_target
+        dx = target_x_ft - current_x_ft
+        dy = target_y_ft - current_y_ft
+        desired_angle = math.atan2(dy, dx)
 
         angle_diff = desired_angle - current_yaw
 
@@ -298,7 +348,9 @@ class NavigationController(object):
         while angle_diff < -math.pi:
             angle_diff += 2 * math.pi
         
-        rospy.loginfo_throttle(2.0, "Angle difference: %.1f deg", math.degrees(angle_diff))
+        # Debug logging with planned path info
+        rospy.loginfo_throttle(2.0, "Path plan: turn=%.1fdeg, dist=%.2f ft | Angle diff: %.1f deg", 
+                               math.degrees(self.planned_turn_angle), self.planned_distance, math.degrees(angle_diff))
 
         return angle_diff
 
