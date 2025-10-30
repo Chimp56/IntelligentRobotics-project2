@@ -14,9 +14,11 @@ from std_msgs.msg import String
 FEET_PER_METER = 3.28084
 METERS_PER_FEET = 1.0 / FEET_PER_METER
 
-FRONT_ESCAPE_DISTANCE_FEET = 0.5
+FRONT_ESCAPE_DISTANCE_FEET = 1.0  # Increased from 0.5 to be less sensitive
 CAMERA_TO_BASE_FOOTPRINT_OFFSET_METER = 0.087
 CAMERA_TO_BUMPER_OFFSET_METER = 0.40
+FRONT_SCAN_ANGLE_DEG = 20.0  # Narrower scan angle (reduced from ~30 degrees)
+MIN_OBSTACLE_READINGS = 3  # Require multiple readings for obstacle detection
 
 COLLISION_TIMEOUT_SEC = 3.0
 BUMPER_DEBOUNCE_SEC = 0.5
@@ -31,7 +33,7 @@ TURN_TOLERANCE = 0.1   # rad (~5.7 deg)
 # Obstacle avoidance constants
 ESCAPE_TURN_DEGREE_ANGLE = 45.0  # degrees
 ESCAPE_TURN_DEGREE_ANGLE_VARIANCE = 15.0  # degrees
-SYMMETRIC_THRESHOLD = 0.2  # ratio difference threshold for symmetric detection
+SYMMETRIC_THRESHOLD = 0.05  # ratio difference threshold for symmetric detection (lower = more asymmetric)
 
 
 class NavigationController(object):
@@ -293,7 +295,9 @@ class NavigationController(object):
         self.check_obstacles_ahead()
         if getattr(self, 'obstacle_detected', False):
             self.handle_obstacle()
+            self.move_forward()
             return
+        
 
         if self._teleop_active():
             self.stop_robot()
@@ -390,11 +394,12 @@ class NavigationController(object):
         if len(front_ranges) > 0:
             rospy.loginfo("Closest obstacle: {:.2f}m".format(np.min(front_ranges)))
 
-        # Within threshold?
-        if len(front_ranges) > 0 and np.min(front_ranges) < distance_threshold:
+        # Within threshold AND sufficient readings? (requires multiple readings to avoid false positives)
+        obstacle_count = len(front_ranges)
+        if obstacle_count >= MIN_OBSTACLE_READINGS and np.min(front_ranges) < distance_threshold:
             self.obstacle_detected = True
-            rospy.loginfo("Obstacle detected")
-            rospy.loginfo("Obstacle detected at {:.2f}m (threshold: {:.2f}m)".format(np.min(front_ranges), distance_threshold))
+            rospy.loginfo("Obstacle detected (count: {}, min: {:.2f}m, threshold: {:.2f}m)".format(
+                obstacle_count, np.min(front_ranges), distance_threshold))
 
             # Determine if obstacle is symmetric or asymmetric
             if self.is_obstacle_symmetric(front_ranges):
@@ -504,9 +509,10 @@ class NavigationController(object):
         # Filter out invalid readings (inf, nan)
         ranges = ranges[np.isfinite(ranges)]
 
-        # Front sector (roughly -30 to +30 degrees)
-        front_start_idx = int((-np.pi/6 - angle_min) / angle_increment)
-        front_end_idx = int((np.pi/6 - angle_min) / angle_increment)
+        # Front sector using configured scan angle (narrower for less sensitivity)
+        scan_angle_rad = math.radians(FRONT_SCAN_ANGLE_DEG)
+        front_start_idx = int((-scan_angle_rad - angle_min) / angle_increment)
+        front_end_idx = int((scan_angle_rad - angle_min) / angle_increment)
         front_start_idx = max(0, front_start_idx)
         front_end_idx = min(len(ranges), front_end_idx)
 

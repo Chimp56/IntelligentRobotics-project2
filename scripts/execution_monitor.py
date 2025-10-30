@@ -36,7 +36,7 @@ class ExecutionMonitor(object):
 
         self.previous_distance = float('inf')
         self.stuck_counter = 0
-        self.max_stuck_iterations = 100     # ~10s at 10Hz
+        self.max_stuck_iterations = 150     # ~15s at 10Hz
         self.success_threshold = 1.0        # feet
 
         self.meters_per_foot = 0.3048
