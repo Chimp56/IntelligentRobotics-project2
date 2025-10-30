@@ -409,6 +409,7 @@ class NavigationController(object):
                 self.on_symmetric_obstacle_ahead()
             else:
                 self.on_asymmetric_obstacle_ahead()
+            self.move_forward()
         else:
             self.obstacle_detected = False
 
@@ -514,12 +515,18 @@ class NavigationController(object):
             if nearest >= distance_threshold * CLEARANCE_EXIT_SCALE or self.is_obstacle_symmetric(front_ranges):
                 break
 
-            left_avg, right_avg = self._split_left_right(front_ranges)
+            # Determine which side is clearer using min distance per half.
+            mid = len(front_ranges) // 2
+            right_half = front_ranges[:mid]   # negative angles (right side)
+            left_half  = front_ranges[mid:]   # positive angles (left side)
 
-            # Arc: move forward slowly while turning toward the clearer side
+            left_min = float(np.min(left_half)) if len(left_half) > 0 else 0.0
+            right_min = float(np.min(right_half)) if len(right_half) > 0 else 0.0
+
+            # Arc: move forward slowly while turning toward the clearer side (larger min distance)
             twist = Twist()
             twist.linear.x = FORWARD_SPEED * AVOID_ARC_SPEED_SCALE
-            twist.angular.z = angular_velocity if left_avg > right_avg else -angular_velocity
+            twist.angular.z = angular_velocity if left_min > right_min else -angular_velocity
             self.cmd_vel_pub.publish(twist)
             rate.sleep()
 
