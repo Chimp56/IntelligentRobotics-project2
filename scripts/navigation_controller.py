@@ -30,6 +30,8 @@ ANGULAR_SPEED = 0.5    # rad/s
 TURN_TOLERANCE = 0.1   # rad (~5.7 deg)
 BACKOFF_SPEED = 0.2    # m/s (reverse speed on bumper)
 BACKOFF_DURATION_SEC = 0.8
+ADVANCE_AFTER_TURN_SEC = 0.8
+ADVANCE_SPEED_SCALE = 0.6
 
 
 # Obstacle avoidance constants
@@ -398,6 +400,16 @@ class NavigationController(object):
         rospy.loginfo_throttle(1.0,
             "NavCtrl: moving forward")
 
+    def _advance_after_turn(self, seconds=ADVANCE_AFTER_TURN_SEC):
+        """Push forward briefly after a turn to commit around the obstacle."""
+        end_time = rospy.Time.now() + rospy.Duration(seconds)
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown() and rospy.Time.now() < end_time:
+            twist = Twist()
+            twist.linear.x = FORWARD_SPEED * ADVANCE_SPEED_SCALE
+            self.cmd_vel_pub.publish(twist)
+            rate.sleep()
+
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
 
@@ -500,6 +512,9 @@ class NavigationController(object):
         # Execute turn
         self.execute_turn(turn_radians)
         
+        # After turning, push forward to start skirting the obstacle
+        self._advance_after_turn()
+
         # Reset obstacle detection after turn
         self.obstacle_detected = False
 
@@ -546,9 +561,10 @@ class NavigationController(object):
             self.cmd_vel_pub.publish(twist)
             rate.sleep()
 
-        # Stop turning
+        # Stop turning, then push forward a bit to commit around obstacle
         self.reset_velocity()
         self._set_position_after_turn()
+        self._advance_after_turn()
         self.obstacle_detected = False
 
     def is_obstacle_symmetric(self, front_ranges=None):
