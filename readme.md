@@ -26,6 +26,7 @@ chmod +x ~/catkin_ws/src/project2/scripts/*.py
 To start mapping the environment using SLAM, run:
 
 ```bash
+# Default values: x_feet=1.0, y_feet=1.0, yaw_deg=0.0
 roslaunch project2 mapping.launch
 ```
 
@@ -33,9 +34,13 @@ To modify starting position
 ```bash
 # Example: Start at custom position in feet and degrees (e.g., x=5.0 feet, y=8.0 feet, yaw=180 degrees)
 roslaunch project2 mapping.launch x_feet:=5.0 y_feet:=8.0 yaw_deg:=180.0
+```
 
-# Default values: x_feet=1.0, y_feet=1.0, yaw_deg=90.0
-roslaunch project2 mapping.launch
+To launch with custom tasks
+```bash
+# Launch with custom tasks (semicolon-separated pairs of (start,dest) in feet)
+roslaunch project2 mapping.launch \
+  tasks:="((5, 1), (10, 4));((12, 9), (4, 15))"
 ```
 
 Send new tasks
