@@ -10,7 +10,7 @@ import math
 class ExecutionMonitor(object):
     def __init__(self):
         rospy.init_node('execution_monitor', anonymous=True)
-
+        
         # --- Spawn pose (passed from launch in FEET) ---
         # This is the robot's declared global starting position.
         self.start_x_feet = rospy.get_param("~start_x_feet", 0.0)
@@ -18,7 +18,7 @@ class ExecutionMonitor(object):
 
         # --- ROS I/O ---
         self.odom_sub = rospy.Subscriber('/odom', Odometry, self.odom_callback)
-
+        
         # NavigationController listens on this
         self.status_pub = rospy.Publisher('/execution_monitor/status',
                                           String, queue_size=1)
@@ -36,7 +36,7 @@ class ExecutionMonitor(object):
 
         self.previous_distance = float('inf')
         self.stuck_counter = 0
-        self.max_stuck_iterations = 100     # ~10s at 10Hz
+        self.max_stuck_iterations = 150     # ~15s at 10Hz
         self.success_threshold = 1.0        # feet
 
         self.meters_per_foot = 0.3048
@@ -77,13 +77,13 @@ class ExecutionMonitor(object):
         if self.target_point is None:
             rospy.loginfo("ExecutionMonitor: target unset, skipping check.")
             return
-
+        
         if self.current_position is None:
             rospy.loginfo("ExecutionMonitor: no odometry yet, skipping check.")
             return
-
+        
         current_distance = self.calculate_distance_to_target()
-
+        
         rospy.loginfo_throttle(
             2.0,
             "ExecMon pos(%.2f, %.2f)ft -> tgt(%.2f, %.2f)ft d=%.2f",
@@ -156,7 +156,7 @@ class ExecutionMonitor(object):
         self.publish_status(
             "Target set to ({:.2f}, {:.2f}) feet".format(msg.x, msg.y)
         )
-
+    
     def odom_callback(self, data):
         """
         Convert /odom position (meters in Gazebo base frame)
@@ -180,7 +180,7 @@ class ExecutionMonitor(object):
         msg = String()
         msg.data = message
         self.status_pub.publish(msg)
-
+    
     def calculate_distance_to_target(self):
         if self.current_position is None or self.target_point is None:
             return float('inf')
@@ -192,11 +192,11 @@ class ExecutionMonitor(object):
         if self.current_position is None or self.target_point is None:
             return False
         return self.calculate_distance_to_target() <= self.success_threshold
-
+    
     def is_making_progress(self):
         if self.current_position is None or self.target_point is None:
             return False
-
+        
         d = self.calculate_distance_to_target()
         # got closer?
         if d < self.previous_distance:
@@ -205,9 +205,9 @@ class ExecutionMonitor(object):
             return True
 
         # didn't get closer
-        self.stuck_counter += 1
-        return False
-
+            self.stuck_counter += 1
+            return False
+    
     def is_stuck(self):
         return self.stuck_counter >= self.max_stuck_iterations
 
