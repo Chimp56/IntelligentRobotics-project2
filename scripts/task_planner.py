@@ -133,7 +133,7 @@ class TaskPlanner(object):
 
         if text.startswith("SUCCESS"):
             # Robot reached the current waypoint.
-            self._pop_front()
+                self._pop_front()
             self.republished_after_failure = False
 
         elif text.startswith("FAILURE"):

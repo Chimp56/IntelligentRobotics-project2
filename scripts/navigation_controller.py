@@ -411,19 +411,71 @@ class NavigationController(object):
 
     def on_symmetric_obstacle_ahead(self):
         """
-        Handle symmetric obstacle by turning a random degree angle
+        Handle symmetric obstacle by turning based on target direction.
+        If dy < dx: turn toward (current_x, target_y)
+        If dx < dy: turn toward (target_x, current_y)
         """
-        rospy.loginfo("Symmetric obstacle detected - executing escape turn")
+        rospy.loginfo("Symmetric obstacle detected - turning based on target direction")
         
-        # Calculate random turn angle
-        min_angle = ESCAPE_TURN_DEGREE_ANGLE - ESCAPE_TURN_DEGREE_ANGLE_VARIANCE
-        max_angle = ESCAPE_TURN_DEGREE_ANGLE + ESCAPE_TURN_DEGREE_ANGLE_VARIANCE
-        turn_angle = random.uniform(min_angle, max_angle)
+        # Get current position and target
+        if self.odom_data is None or self.current_target is None:
+            # Fall back to random turn if no data
+            turn_angle = random.uniform(30, 60)
+            turn_radians = np.radians(turn_angle)
+            rospy.logwarn("No position/target data, using random turn")
+        else:
+            # Current position
+            cur_x_ft = (self.odom_data.pose.pose.position.x / self.meters_per_foot) + self.start_x_feet
+            cur_y_ft = (self.odom_data.pose.pose.position.y / self.meters_per_foot) + self.start_y_feet
+            
+            # Target position
+            tgt_x_ft, tgt_y_ft = self.current_target
+            
+            # Calculate deltas
+            dx = tgt_x_ft - cur_x_ft
+            dy = tgt_y_ft - cur_y_ft
+            
+            # Determine intermediate waypoint based on which dimension is larger
+            if abs(dy) < abs(dx):
+                # Horizontal movement is longer - turn toward (current_x, target_y)
+                inter_x = cur_x_ft
+                inter_y = tgt_y_ft
+                rospy.loginfo("Horizontal path longer (dx=%.2f > dy=%.2f), turning toward (%.2f, %.2f)", 
+                             abs(dx), abs(dy), inter_x, inter_y)
+            else:
+                # Vertical movement is longer - turn toward (target_x, current_y)
+                inter_x = tgt_x_ft
+                inter_y = cur_y_ft
+                rospy.loginfo("Vertical path longer (dy=%.2f > dx=%.2f), turning toward (%.2f, %.2f)", 
+                             abs(dy), abs(dx), inter_x, inter_y)
+            
+            # Calculate angle to intermediate waypoint
+            inter_dx = inter_x - cur_x_ft
+            inter_dy = inter_y - cur_y_ft
+            desired_angle = math.atan2(inter_dy, inter_dx)
+            
+            # Get current orientation
+            q = self.odom_data.pose.pose.orientation
+            yaw_now = self.quaternion_to_yaw(q)
+            yaw_now += self.yaw_offset_rad
+            
+            # Normalize
+            while yaw_now > math.pi:
+                yaw_now -= 2.0 * math.pi
+            while yaw_now < -math.pi:
+                yaw_now += 2.0 * math.pi
+            
+            # Calculate turn angle
+            turn_radians = desired_angle - yaw_now
+            
+            # Normalize turn angle
+            while turn_radians > math.pi:
+                turn_radians -= 2.0 * math.pi
+            while turn_radians < -math.pi:
+                turn_radians += 2.0 * math.pi
         
-        # Convert to radians
-        turn_radians = np.radians(turn_angle)
-        
-        rospy.loginfo("Turning {:.1f} degrees ({:.2f} radians)".format(turn_angle, turn_radians))
+        rospy.loginfo("Turning {:.1f} degrees ({:.2f} radians)".format(
+            math.degrees(turn_radians), turn_radians))
         
         # Execute turn
         self.execute_turn(turn_radians)
