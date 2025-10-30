@@ -519,27 +519,56 @@ class NavigationController(object):
 
     def is_obstacle_symmetric(self, front_ranges=None):
         """
-        Determine if obstacle is symmetric by comparing left and right sides
+        Determine symmetry using more robust cues:
+        - Compare left/right minimum distances (strong signal of which side is clearer)
+        - Compare left/right counts (how many points are within threshold on each side)
+
+        Returns True only when both sides are very similar.
         """
         if front_ranges is None:
             front_ranges, _ = self._compute_front_ranges_and_threshold()
             if front_ranges is None:
                 return True
 
-        left_avg, right_avg = self._split_left_right(front_ranges)
-        
-        # Calculate ratio difference
-        if left_avg == 0 and right_avg == 0:
-            return True  # Both sides blocked, treat as symmetric
-        
-        avg_distance = (left_avg + right_avg) / 2.0
-        if avg_distance == 0:
+        # Split into halves
+        mid = len(front_ranges) // 2
+        left = front_ranges[:mid]
+        right = front_ranges[mid:]
+
+        # If no readings at all, treat as symmetric (no evidence)
+        if len(left) == 0 and len(right) == 0:
             return True
-        
-        ratio_diff = abs(left_avg - right_avg) / avg_distance
-        
-        # If difference is small, obstacle is symmetric
-        return ratio_diff < SYMMETRIC_THRESHOLD
+        # If readings only on one side, clearly asymmetric
+        if len(left) == 0 or len(right) == 0:
+            return False
+
+        # Metrics
+        left_min = float(np.min(left)) if len(left) > 0 else float('inf')
+        right_min = float(np.min(right)) if len(right) > 0 else float('inf')
+        left_count = len(left)
+        right_count = len(right)
+
+        # 1) Min-distance similarity (relative difference)
+        denom = (left_min + right_min) / 2.0 if (left_min + right_min) > 0.0 else 1.0
+        min_ratio_diff = abs(left_min - right_min) / denom
+
+        # 2) Count balance (how even are the returns on each side?)
+        total = float(left_count + right_count)
+        count_imbalance = abs(left_count - right_count) / total if total > 0 else 0.0
+
+        # Thresholds: keep SYMMETRIC_THRESHOLD as distance similarity gate,
+        # and require counts to be reasonably balanced (< 40% imbalance)
+        COUNT_IMBALANCE_THRESHOLD = 0.4
+
+        # Symmetric only if both distance similarity and count balance are satisfied
+        is_symmetric = (min_ratio_diff < SYMMETRIC_THRESHOLD) and (count_imbalance < COUNT_IMBALANCE_THRESHOLD)
+
+        rospy.loginfo_throttle(2.0,
+            "Symmetry check: left_min=%.2fm right_min=%.2fm min_ratio=%.2f count_l=%d count_r=%d imbalance=%.2f -> %s",
+            left_min, right_min, min_ratio_diff, left_count, right_count, count_imbalance,
+            "SYMMETRIC" if is_symmetric else "ASYMMETRIC")
+
+        return is_symmetric
 
     def _compute_front_ranges_and_threshold(self):
         """
