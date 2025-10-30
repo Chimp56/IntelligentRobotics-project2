@@ -26,7 +26,7 @@ chmod +x ~/catkin_ws/src/project2/scripts/*.py
 To start mapping the environment using SLAM, run:
 
 ```bash
-# Default values: x_feet=1.0, y_feet=1.0, yaw_deg=0.0
+# Default values: x_feet=1.0, y_feet=1.0, yaw_deg=90.0
 roslaunch project2 mapping.launch
 ```
 
