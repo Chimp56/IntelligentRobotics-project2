@@ -591,6 +591,13 @@ class NavigationController(object):
         twist = Twist()
         self.cmd_vel_pub.publish(twist)
 
+    def _set_position_after_turn(self):
+        """
+        Placeholder for updating position after turn if needed.
+        Currently just logs that turn completed.
+        """
+        rospy.loginfo("Turn completed")
+
     def handle_obstacle(self):
         """
         Handle obstacle avoidance - this is called from navigate_to_target
