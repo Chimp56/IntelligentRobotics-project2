@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 import rospy
 import re
 import math
 from nav_msgs.msg import Odometry
 from std_msgs.msg import String
 
-# feet/meter conversion
+# We use feet everywhere to match the assignment and other nodes
 FEET_PER_METER = 3.28084
 
-# Parse lines like: ((2, 3), (9, 8))
+# Regex to parse lines like: ((2, 3), (9, 8))
 TASK_LINE_RE = re.compile(
     r"\(\(\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)\s*\)\s*,\s*\(\s*([-+]?\d+(?:\.\d+)?)\s*,\s*([-+]?\d+(?:\.\d+)?)\s*\)\s*\)"
 )
@@ -19,110 +18,133 @@ class TaskPlanner(object):
     def __init__(self):
         rospy.init_node('task_planner', anonymous=False)
 
-        # -------- Params --------
-        # Incoming task list (pairs of (start,dest) points in feet)
+        # --- Params ---
+        # Option A: tasks from file
         self.tasks_file = rospy.get_param("~tasks_file", "")
-        self.tasks_text = rospy.get_param("~tasks_text", "")
+        # Option B: tasks from launch param inline
+        self.tasks_text_param = rospy.get_param("~tasks_text", "")
 
-        # Robot's starting pose in the assignment's global frame (feet + deg).
-        # This fulfills: "provide your robot with its starting pose (location and orientation)
-        # when you start the simulation."
-        self.start_x_feet    = rospy.get_param("~start_x_feet", 0.0)
-        self.start_y_feet    = rospy.get_param("~start_y_feet", 0.0)
-        self.start_theta_deg = rospy.get_param("~start_theta_deg", 0.0)
-        self.start_pose_feet = (self.start_x_feet,
-                                self.start_y_feet,
-                                self.start_theta_deg)
+        # robot spawn pose in global feet coords (given by launch)
+        self.spawn_x_ft = rospy.get_param("~start_x_feet", 0.0)
+        self.spawn_y_ft = rospy.get_param("~start_y_feet", 0.0)
+        self.spawn_theta_deg = rospy.get_param("~start_theta_deg", 0.0)
 
-        # -------- ROS I/O --------
+        # --- ROS I/O ---
         self.odom_sub = rospy.Subscriber("/odom", Odometry, self._odom_cb)
         self.status_sub = rospy.Subscriber("/execution_monitor/status",
                                            String, self._status_cb)
 
-        # Latched publisher so nav can join late
+        # publish current plan (semicolon-separated x,y list in FEET)
         self.waypoints_pub = rospy.Publisher("/task_planner/waypoints",
-                                             String, queue_size=1, latch=True)
+                                             String,
+                                             queue_size=1,
+                                             latch=True)
 
-        # -------- Internal State --------
-        self.current_pose_ft = None    # robot pose in FEET (absolute world coordinates)
+        # listen for NEW task sets at runtime
+        self.new_tasks_sub = rospy.Subscriber("/task_planner/new_task_text",
+                                              String,
+                                              self._new_tasks_callback)
 
-        # Tasks: [{"id":i, "start":(sx,sy), "dest":(dx,dy)}, ...]
+        # --- State ---
+        # robot odom origin in meters when we first heard odom
+        self.odom_zero_m = None  # (x_m, y_m)
+
+        # robot current position (feet, world frame consistent with spawn)
+        self.current_pose_ft = None
+
+        # tasks: list of dicts {"id": k, "start": (sx,sy), "dest": (dx,dy)}
         self.tasks = []
 
-        # Full best plan: [{"id":k, "kind":"START"/"DEST", "pt":(x,y)}, ...]
+        # full best path = list of dicts like
+        # {"id": tid, "kind":"START"/"DEST", "pt": (x_ft, y_ft)}
         self.best_sequence = []
 
-        # What remains to attempt (mutates as we succeed/fail)
+        # what’s left to visit after reacting to monitor updates
         self.remaining_sequence = []
 
-        self.current_index = 0
+        # book-keeping for reacting to FAILURE rules
         self.republished_after_failure = False
 
         rospy.loginfo("TaskPlanner: initialized.")
-        rospy.loginfo("TaskPlanner: given start pose feet = (%.2f, %.2f) heading %.1f deg",
-                      self.start_x_feet, self.start_y_feet, self.start_theta_deg)
+        rospy.loginfo("Spawn pose feet (%.2f, %.2f) yaw %.1f deg",
+                      self.spawn_x_ft, self.spawn_y_ft, self.spawn_theta_deg)
 
+    # ------------------------------------------------------------------
+    # main loop
+    # ------------------------------------------------------------------
     def run(self):
-        # 1. Load tasks
-        if not self._load_tasks():
-            rospy.logerr("TaskPlanner: No tasks found (tasks_file or tasks_text). Exiting.")
+        # 1) Load initial tasks from launch or file
+        if not self._load_tasks_from_sources():
+            rospy.logerr("TaskPlanner: No initial tasks. Exiting.")
             return
 
-        # 2. Wait for odom so we're synced with the sim
-        rospy.loginfo("TaskPlanner: waiting for first odom to set origin...")
+        # 2) Wait for first odom so we can track robot pose if needed
+        rospy.loginfo("TaskPlanner: waiting for first odom...")
         while not rospy.is_shutdown() and self.current_pose_ft is None:
             rospy.sleep(0.05)
 
-        # 3. Compute best visiting order
-        self.best_sequence = self._compute_best_sequence(self.tasks)
-        self.remaining_sequence = list(self.best_sequence)
-        rospy.loginfo("TaskPlanner: planned %d points.", len(self.best_sequence))
+        # 3) Plan with those tasks
+        self._plan_and_publish()
 
-        # 4. Publish initial waypoint list for navigation_controller
-        self._publish_remaining_sequence()
-
-        # 5. Spin and react to execution monitor status
-        rospy.loginfo("TaskPlanner: running; listening for execution monitor updates.")
+        # 4) spin: we now react to
+        #    - execution monitor feedback (SUCCESS / FAILURE)
+        #    - new task sets from /task_planner/new_task_text
+        rospy.loginfo("TaskPlanner: running; listening for updates.")
         rospy.spin()
 
-    # -------- Callbacks --------
+    # ------------------------------------------------------------------
+    # callbacks
+    # ------------------------------------------------------------------
     def _odom_cb(self, msg):
+        """
+        Track robot position in *world feet coords* based on:
+          - Gazebo spawn feet (from launch)
+          - odom drift from start in meters
+        """
         px_m = msg.pose.pose.position.x
         py_m = msg.pose.pose.position.y
 
-        self.current_pose_ft = (px_m * FEET_PER_METER + self.start_x_feet, 
-                                py_m * FEET_PER_METER + self.start_y_feet)
+        if self.odom_zero_m is None:
+            self.odom_zero_m = (px_m, py_m)
+            rospy.loginfo("TaskPlanner: odom_zero_m set at (%.3f, %.3f) m",
+                          px_m, py_m)
+
+        # offset from when we started
+        dx_m = px_m - self.odom_zero_m[0]
+        dy_m = py_m - self.odom_zero_m[1]
+
+        # convert that delta to feet, then add spawn feet offset
+        dx_ft = dx_m * FEET_PER_METER
+        dy_ft = dy_m * FEET_PER_METER
+
+        self.current_pose_ft = (self.spawn_x_ft + dx_ft,
+                                self.spawn_y_ft + dy_ft)
 
     def _status_cb(self, msg):
         """
-        ExecutionMonitor reports:
-          SUCCESS: reached target
-          FAILURE: couldn't reach target
-          PROGRESS/STALLED: info only
-
-        Rules from assignment:
-        - If FAILURE happens on a START point for a task, we must remove that task's DEST
-          from the rest of the plan.
+        React to execution monitor.
+        - SUCCESS => advance to next waypoint
+        - FAILURE => if we failed a START for task X, drop DEST for X
+                     and republish updated plan
         """
         text = msg.data.strip()
         if not self.remaining_sequence:
             return
 
         if text.startswith("SUCCESS"):
-            # Drop the point we just hit
-            if self.remaining_sequence:
-                self._pop_front()
+            # Robot reached the current waypoint.
+            self._pop_front()
             self.republished_after_failure = False
 
         elif text.startswith("FAILURE"):
             if not self.remaining_sequence:
                 return
 
-            failed_elem = self._pop_front()
-            if failed_elem and failed_elem["kind"] == "START":
-                task_id = failed_elem["id"]
+            failed_elem = self._pop_front()  # remove the one we just tried
 
-                # Remove that task's DEST from whatever remains
+            if failed_elem and failed_elem["kind"] == "START":
+                # Drop that task's DEST from whatever is left
+                task_id = failed_elem["id"]
                 before = len(self.remaining_sequence)
                 self.remaining_sequence = [
                     e for e in self.remaining_sequence
@@ -130,17 +152,69 @@ class TaskPlanner(object):
                 ]
                 after = len(self.remaining_sequence)
                 if before != after:
-                    rospy.logwarn("TaskPlanner: removed DEST for task %s due to start failure.",
+                    rospy.logwarn("TaskPlanner: removed DEST for task %s due to START failure.",
                                   task_id)
 
-                # Re-publish shortened plan so nav realigns
+                # Re-publish updated remainder so NavigationController
+                # can continue with what’s left
                 self._publish_remaining_sequence()
                 self.republished_after_failure = True
 
-        # Ignore PROGRESS / STALLED for planning purposes
+        # We ignore PROGRESS / STALLED here.
 
-    # -------- Helpers --------
+    def _new_tasks_callback(self, msg):
+        """
+        Accepts either line-separated or semicolon-separated tasks, e.g.:
+        ((8,2),(6,7))
+        ((3,5),(2,1))
+        or: ((8,2),(6,7)); ((3,5),(2,1))
+        """
+        txt = msg.data.strip()
+        if not txt:
+            rospy.logwarn("TaskPlanner: received empty new_task_text.")
+            return
+
+        # unify separators: split on newlines and semicolons
+        raw_chunks = []
+        for ln in txt.replace('&#10;', '\n').splitlines():
+            raw_chunks.extend([c.strip() for c in ln.split(';') if c.strip()])
+
+        new_tasks = []
+        for i, chunk in enumerate(raw_chunks):
+            m = TASK_LINE_RE.search(chunk)
+            if not m:
+                rospy.logwarn("TaskPlanner: skipping bad task %d: %s", i+1, chunk)
+                continue
+            sx, sy, dx, dy = map(float, m.groups())
+            new_tasks.append({"id": i, "start": (sx, sy), "dest": (dx, dy)})
+
+        if not new_tasks:
+            rospy.logwarn("TaskPlanner: parsed 0 valid new tasks.")
+            return
+
+        rospy.loginfo("TaskPlanner: parsed %d new tasks; re-planning.", len(new_tasks))
+        self.tasks = new_tasks
+        self._plan_and_publish()
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    def _plan_and_publish(self):
+        """
+        Compute best_sequence from self.tasks,
+        reset remaining_sequence to that,
+        and publish via /task_planner/waypoints.
+        """
+        self.best_sequence = self._compute_best_sequence(self.tasks)
+        self.remaining_sequence = list(self.best_sequence)
+
+        rospy.loginfo("TaskPlanner: planned %d waypoints.", len(self.best_sequence))
+        self._publish_remaining_sequence()
+
     def _pop_front(self):
+        """
+        Pop the element at front of remaining_sequence and return it.
+        """
         if not self.remaining_sequence:
             return None
         elem = self.remaining_sequence.pop(0)
@@ -148,126 +222,127 @@ class TaskPlanner(object):
 
     def _publish_remaining_sequence(self):
         """
-        Publish remaining target list as
-          'x,y; x,y; x,y'
-        all in FEET.
+        Publish remaining_sequence as:
+           "x,y; x,y; x,y"
+        in FEET.
+        NavigationController will parse and start moving.
         """
         s = "; ".join(
             ["{:.3f},{:.3f}".format(e["pt"][0], e["pt"][1])
              for e in self.remaining_sequence]
         )
         self.waypoints_pub.publish(String(data=s))
-        rospy.loginfo("TaskPlanner: published %d remaining waypoints.",
-                      len(self.remaining_sequence))
+        rospy.loginfo("TaskPlanner: published %d remaining waypoints.", len(self.remaining_sequence))
 
-    def _load_tasks(self):
+    def _load_tasks_from_sources(self):
         """
-        Parse the provided task list into self.tasks:
-          [{"id": i, "start": (sx,sy), "dest": (dx,dy)}, ...]
-        Units: FEET.
+        Called once at startup.
+        Prefer ~tasks_text param if provided, else ~tasks_file.
+        Returns True if we got >=1 valid task.
         """
         lines = []
-        if self.tasks_text.strip():
-            lines = [ln for ln in self.tasks_text.strip().splitlines()
-                     if ln.strip()]
+        if self.tasks_text_param.strip():
+            # tasks_text param may contain literal "\n" or XML &#10; newlines
+            txt = self.tasks_text_param.replace('&#10;', '\n')
+            for ln in txt.splitlines():
+                if ln.strip():
+                    lines.append(ln.strip())
         elif self.tasks_file:
             try:
                 with open(self.tasks_file, 'r') as f:
-                    lines = [ln for ln in f.readlines() if ln.strip()]
+                    for ln in f.readlines():
+                        if ln.strip():
+                            lines.append(ln.strip())
             except Exception as e:
                 rospy.logerr("TaskPlanner: failed to read tasks_file: %s", e)
                 return False
         else:
             return False
 
+        self.tasks = self._parse_task_lines(lines)
+        if not self.tasks:
+            return False
+
+        rospy.loginfo("TaskPlanner: loaded %d tasks at startup.", len(self.tasks))
+        return True
+
+    def _parse_task_lines(self, lines):
+        """
+        Take lines like:
+            ((2, 3), (9, 8))
+            ((12, 9), (4, 14))
+        Return list of {"id":k, "start":(sx,sy), "dest":(dx,dy)}.
+        """
         tasks = []
         for i, ln in enumerate(lines):
             m = TASK_LINE_RE.search(ln)
             if not m:
-                rospy.logwarn("TaskPlanner: skipping unparsable line %d: %s",
-                              i + 1, ln.rstrip())
+                rospy.logwarn("TaskPlanner: skipping bad line %d: %s", i+1, ln)
                 continue
             sx, sy, dx, dy = map(float, m.groups())
-            tasks.append({
-                "id": i,
-                "start": (sx, sy),
-                "dest":  (dx, dy)
-            })
+            tasks.append({"id": i, "start": (sx, sy), "dest": (dx, dy)})
+        return tasks
 
-        self.tasks = tasks
-        if not tasks:
-            return False
-
-        rospy.loginfo("TaskPlanner: loaded %d tasks.", len(tasks))
-        return True
-
-    # -------- Planner / Ordering --------
+    # ------------------------------------------------------------------
+    # planning search
+    # ------------------------------------------------------------------
     def _compute_best_sequence(self, tasks):
         """
-        We build a visit order of all START and DEST points that:
-        - Obeys: each task's START must come before that task's DEST
-        - Minimizes total straight-line travel distance
-        - Includes distance from the robot's PROVIDED starting pose
-          (start_x_feet, start_y_feet) to the first chosen point
+        Return a list of dicts:
+          [{"id":k,"kind":"START"/"DEST","pt":(x,y)}, ...]
+        that minimizes straight-line travel distance,
+        subject to precedence (START must come before DEST for each task).
 
-        Output format:
-        [
-          {"id": task_id, "kind": "START" or "DEST", "pt": (x,y)},
-          ...
-        ]
+        Cost starts at the robot spawn position (spawn_x_ft, spawn_y_ft),
+        not always (0,0), which satisfies the project requirement
+        "provide your robot with its starting pose".
         """
-        # Build (kind, task_id, point)
-        candidates = []
+        # Elements we need to order:
+        #   ("START", task_id, (sx,sy)), ("DEST", task_id, (dx,dy))
+        elements = []
         for t in tasks:
-            candidates.append(("START", t["id"], t["start"]))
-            candidates.append(("DEST",  t["id"], t["dest"]))
+            elements.append(("START", t["id"], t["start"]))
+            elements.append(("DEST",  t["id"], t["dest"]))
 
         best_seq_holder = [None]
         best_cost_holder = [float('inf')]
 
         def valid_to_add(partial, cand):
-            kind, tid, _pt = cand
+            kind, tid, _ = cand
             if kind == "DEST":
-                # can't add DEST unless START for this tid is already in partial
-                for k, t_id, _p in partial:
-                    if k == "START" and t_id == tid:
+                # A DEST for task tid can only appear if we've already placed
+                # that same task's START in partial
+                for (k_partial, tid_partial, _pt_partial) in partial:
+                    if k_partial == "START" and tid_partial == tid:
                         return True
                 return False
             return True
 
-        def path_cost(sequence):
-            """
-            Total travel if we begin from the robot's provided start pose.
-            """
+        def cost_of(sequence):
             if not sequence:
                 return 0.0
-
-            prev_x = self.start_pose_feet[0]
-            prev_y = self.start_pose_feet[1]
             total = 0.0
-            for (_kind, _tid, pt) in sequence:
-                dx = pt[0] - prev_x
-                dy = pt[1] - prev_y
-                total += math.hypot(dx, dy)
-                prev_x, prev_y = pt[0], pt[1]
+            # start cost from the robot's spawn position (feet)
+            prev = (self.spawn_x_ft, self.spawn_y_ft)
+            for (_k, _tid, pt) in sequence:
+                total += math.hypot(pt[0] - prev[0], pt[1] - prev[1])
+                prev = pt
             return total
 
         def backtrack(partial, remaining):
-            # If no more points to assign, evaluate this ordering
+            # all placed?
             if not remaining:
-                c = path_cost(partial)
+                c = cost_of(partial)
                 if c < best_cost_holder[0]:
                     best_cost_holder[0] = c
                     best_seq_holder[0] = list(partial)
                 return
 
-            # small heuristic: consider closer points (to the robot's start pose)
+            # heuristic: try nearest next points first (distance from spawn, cheap-ish)
             rem_sorted = sorted(
                 remaining,
-                key=lambda e: math.hypot(
-                    e[2][0] - self.start_pose_feet[0],
-                    e[2][1] - self.start_pose_feet[1]
-                )
+                key=lambda e: math.hypot(e[2][0] - self.spawn_x_ft,
+                                         e[2][1] - self.spawn_y_ft)
             )
 
             for i, cand in enumerate(rem_sorted):
@@ -277,27 +352,27 @@ class TaskPlanner(object):
                 next_remaining = rem_sorted[:i] + rem_sorted[i+1:]
                 partial.append(cand)
 
-                # prune if already worse than best complete we've seen
-                if (best_seq_holder[0] is None or
-                        path_cost(partial) <= best_cost_holder[0]):
+                # prune if already worse than best
+                if (best_seq_holder[0] is None) or (cost_of(partial) <= best_cost_holder[0]):
                     backtrack(partial, next_remaining)
 
                 partial.pop()
 
-        # Kick off the backtracking search
-        backtrack([], candidates)
+        backtrack([], elements)
 
-        # Convert tuples -> dict format we use downstream
-        seq = [
-            {"id": tid, "kind": kind, "pt": (pt[0], pt[1])}
-            for (kind, tid, pt) in best_seq_holder[0]
-        ]
-        return seq
+        # convert [("START", id, (x,y)), ("DEST", id, (x,y)), ...]
+        # into [{"id":id, "kind":"START", "pt":(x,y)}, ...]
+        out = []
+        if best_seq_holder[0] is not None:
+            for (kind, tid, pt) in best_seq_holder[0]:
+                out.append({"id": tid,
+                            "kind": kind,
+                            "pt": (pt[0], pt[1])})
+        return out
 
 
 if __name__ == "__main__":
     try:
-        planner = TaskPlanner()
-        planner.run()
+        TaskPlanner().run()
     except rospy.ROSInterruptException:
         pass
