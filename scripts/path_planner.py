@@ -39,6 +39,12 @@ class PathPlanner:
     def handle_get_segment(self, req):
         """
         Service handler - calculates path segment to requested target.
+        
+        Path plans are calculated from the current position, which is continuously
+        updated via odometry. This means:
+        - For first target: plans from starting position
+        - After success: plans from the reached waypoint (current position)
+        - After failure: plans from current position where failure occurred
         """
         rospy.loginfo("Path planning service request: target (%.2f, %.2f) feet",
                      req.target_x, req.target_y)
@@ -67,7 +73,9 @@ class PathPlanner:
             response.success = True
             response.message = "Path segment calculated successfully"
             
-            rospy.loginfo("Path Planner: Plan - Turn %.2f rad (%.1f deg), Distance %.2f ft",
+            rospy.loginfo("Path Planner: From (%.2f, %.2f) to (%.2f, %.2f) - Turn %.2f rad (%.1f deg), Distance %.2f ft",
+                         self.current_position_feet[0], self.current_position_feet[1],
+                         req.target_x, req.target_y,
                          turn_angle, math.degrees(turn_angle), distance)
             
         except Exception as e:

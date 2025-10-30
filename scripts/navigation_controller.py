@@ -103,6 +103,10 @@ class NavigationController(object):
 
     def run(self):
         rospy.loginfo("Navigation Controller starting...")
+        
+        rospy.loginfo("Waiting 10 seconds for Gazebo to launch...")
+        rospy.sleep(10.0)
+        rospy.loginfo("Starting navigation...")
 
         while not rospy.is_shutdown():
             if self.state == 'NAVIGATING':
