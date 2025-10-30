@@ -40,7 +40,7 @@ roslaunch project2 mapping.launch
 
 Send new tasks
 ```bash
-rostopic pub -1 /task_planner/new_task_text std_msgs/String "data: '((8,1),(6,7)); (4,5),(1,2))'"
+rostopic pub -1 /task_planner/new_task_text std_msgs/String "data: '((8,1),(6,7)); ((4,5),(1,2))'"
 ```
 
 
