@@ -38,12 +38,10 @@ roslaunch project2 mapping.launch x_feet:=5.0 y_feet:=8.0 yaw_deg:=180.0
 roslaunch project2 mapping.launch
 ```
 
-**Coordinate System:**
-- +X axis: Right/East
-- +Y axis: Forward/North  
-- 0° heading: Pointing along +X (right)
-- 90° heading: Pointing along +Y (forward)
-
+Send new tasks
+```bash
+rostopic pub -1 /task_planner/new_task_text std_msgs/String "data: '((8,1),(6,7)); ((4,5),(1,2))'"
+```
 
 
 To control turtlebot using keyboard, open a new terminal and run:
@@ -65,6 +63,7 @@ https://wiki.ros.org/cmd_vel_mux
 git stash
 git pull
 chmod +x ~/catkin_ws/src/project2/scripts/*.py
+source ~/catkin_ws/devel/setup.bash
 roslaunch project2 mapping.launch
 
 
