@@ -16,7 +16,7 @@ Clone the repository into your catkin workspace src:
 git clone https://github.com/Chimp56/IntelligentRobotics-project2 project2
 cd ..
 catkin_make
-source devel/setup.bash
+source ~/catkin_ws/devel/setup.bash
 ```
 
 ```bash

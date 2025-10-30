@@ -163,7 +163,6 @@ include_directories(
   scripts/execution_monitor.py
   scripts/navigation_controller.py
   scripts/task_planner.py
-  scripts/reactive_controller.py
   scripts/path_planner.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
